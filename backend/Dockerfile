@@ -1,11 +1,7 @@
 FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    GDAL_DATA=/usr/share/gdal \
-    PROJ_LIB=/usr/share/proj \
-    CPLUS_INCLUDE_PATH=/usr/include/gdal \
-    C_INCLUDE_PATH=/usr/include/gdal
+    PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gdal-bin \
@@ -13,15 +9,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgeos-dev \
         libproj-dev \
         proj-bin \
+        proj-data \
         gcc \
         g++ \
         libpq-dev \
+        libxml2 \
+        libexpat1 \
+        libgl1 \
+        libxrender1 \
+        zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 

@@ -8,18 +8,20 @@ from app.api.nodes_catalog import router as catalog_router
 from app.api.workflows import router as workflows_router
 from app.core.config import settings
 from app.core.db import ensure_schema
+from app.samples.bootstrap import bootstrap_samples
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     ensure_schema()
+    bootstrap_samples()
     yield
 
 
 app = FastAPI(
     title=settings.app_name,
-    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine + catalogue de nœuds.",
-    version="0.2.0",
+    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine, BIM, raster et WFS.",
+    version="0.3.0",
     lifespan=lifespan,
 )
 

@@ -30,14 +30,24 @@ export function asFeatureCollection(
 	if (isFeatureCollection(value)) return value;
 	if (typeof value === "object") {
 		const record = value as Record<string, unknown>;
+		if (record.type === "RasterDataset" || record.kind === "raster") {
+			return null;
+		}
 		if (record.type === "Feature" && record.geometry) {
 			return { type: "FeatureCollection", features: [value as GeoJsonFeature] };
 		}
 		if (record.data) return asFeatureCollection(record.data);
 		if (record.geojson) return asFeatureCollection(record.geojson);
-		if (record.preview) return asFeatureCollection(record.preview);
+		if (
+			record.preview &&
+			(record.preview as { type?: string }).type === "FeatureCollection"
+		) {
+			return asFeatureCollection(record.preview);
+		}
 		const nested: GeoJsonFeature[] = [];
-		for (const item of Object.values(record)) {
+		for (const [key, item] of Object.entries(record)) {
+			if (["preview_png_base64", "path", "crs", "stats"].includes(key))
+				continue;
 			const fc = asFeatureCollection(item);
 			if (fc) nested.push(...fc.features);
 		}
@@ -79,4 +89,45 @@ export function tableRowsFromData(value: unknown): {
 		}
 	}
 	return { columns: [], rows: [] };
+}
+
+export type RasterPreview = {
+	src: string;
+	path?: string;
+	crs?: string;
+	width?: number;
+	height?: number;
+	stats?: Record<string, unknown>;
+};
+
+export function asRasterPreview(value: unknown): RasterPreview | null {
+	if (!value || typeof value !== "object") return null;
+	const record = value as Record<string, unknown>;
+	const payload =
+		record.data && typeof record.data === "object"
+			? (record.data as Record<string, unknown>)
+			: record;
+	const src =
+		(typeof payload.preview_png_base64 === "string" &&
+			payload.preview_png_base64) ||
+		(typeof record.preview_png_base64 === "string" &&
+			record.preview_png_base64) ||
+		"";
+	const isRaster =
+		payload.type === "RasterDataset" ||
+		payload.kind === "raster" ||
+		record.kind === "raster" ||
+		Boolean(src);
+	if (!isRaster || !src) return null;
+	return {
+		src,
+		path: typeof payload.path === "string" ? payload.path : undefined,
+		crs: typeof payload.crs === "string" ? payload.crs : undefined,
+		width: typeof payload.width === "number" ? payload.width : undefined,
+		height: typeof payload.height === "number" ? payload.height : undefined,
+		stats:
+			payload.stats && typeof payload.stats === "object"
+				? (payload.stats as Record<string, unknown>)
+				: undefined,
+	};
 }

@@ -1,3 +1,4 @@
+from app.nodes.transformers.raster import RasterClipperNode, ZonalStatisticsNode
 from app.nodes.transformers.spatial import (
     AttributeMapperTransformer,
     BufferTransformer,
@@ -12,4 +13,6 @@ __all__ = [
     "FilterTransformer",
     "AttributeMapperTransformer",
     "SpatialJoinNode",
+    "RasterClipperNode",
+    "ZonalStatisticsNode",
 ]

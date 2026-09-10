@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { asFeatureCollection, tableRowsFromData } from "../../lib/geo";
+import {
+	asFeatureCollection,
+	asRasterPreview,
+	tableRowsFromData,
+} from "../../lib/geo";
 import { useDagStore } from "../../store/dagStore";
 import { MapViewer } from "../MapViewer/MapViewer";
 
@@ -18,7 +22,10 @@ export function DataPane({
 	empty,
 	accent,
 }: DataPaneProps) {
-	const [tab, setTab] = useState<"table" | "map">("table");
+	const raster = asRasterPreview(data);
+	const [tab, setTab] = useState<"table" | "map" | "raster">(
+		raster ? "raster" : "table",
+	);
 	const mapView = useDagStore((s) => s.mapView);
 	const setMapView = useDagStore((s) => s.setMapView);
 	const geojson = asFeatureCollection(data);
@@ -47,10 +54,37 @@ export function DataPane({
 					>
 						Carte SIG
 					</button>
+					<button
+						type="button"
+						className={tab === "raster" ? "is-active" : ""}
+						onClick={() => setTab("raster")}
+					>
+						Raster
+					</button>
 				</div>
 			</header>
 			{data == null ? (
 				<div className="empty">{empty}</div>
+			) : tab === "raster" ? (
+				raster ? (
+					<figure className="raster-preview">
+						<img src={raster.src} alt="Prévisualisation raster" />
+						<figcaption>
+							{raster.path || "GeoTIFF"}
+							{raster.width && raster.height
+								? ` · ${raster.width}×${raster.height}`
+								: ""}
+							{raster.crs ? ` · ${raster.crs}` : ""}
+							{raster.stats
+								? ` · min ${raster.stats.min} / max ${raster.stats.max}`
+								: ""}
+						</figcaption>
+					</figure>
+				) : (
+					<div className="empty">
+						Pas de prévisualisation raster (PNG Base64) dans ce snapshot.
+					</div>
+				)
 			) : tab === "map" ? (
 				hasGeometry ? (
 					<div className="map-embed map-embed--tall">
@@ -90,7 +124,7 @@ export function DataPane({
 					</table>
 				</div>
 			) : (
-				<pre>{JSON.stringify(data, null, 2)}</pre>
+				<pre>{JSON.stringify(stripBase64(data), null, 2)}</pre>
 			)}
 		</section>
 	);
@@ -100,4 +134,17 @@ function formatCell(value: unknown): string {
 	if (value === null || value === undefined) return "";
 	if (typeof value === "object") return JSON.stringify(value);
 	return String(value);
+}
+
+function stripBase64(value: unknown): unknown {
+	if (!value || typeof value !== "object") return value;
+	if (Array.isArray(value)) return value;
+	const record = { ...(value as Record<string, unknown>) };
+	if (typeof record.preview_png_base64 === "string") {
+		record.preview_png_base64 = `[png ${record.preview_png_base64.length} chars]`;
+	}
+	if (record.data && typeof record.data === "object") {
+		record.data = stripBase64(record.data);
+	}
+	return record;
 }

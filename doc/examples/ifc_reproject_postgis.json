@@ -1,0 +1,70 @@
+{
+  "name": "IFC → Lambert-93 → PostGIS",
+  "nodes": [
+    {
+      "id": "ifc_bim_reader-1",
+      "type": "etl",
+      "position": { "x": 80, "y": 120 },
+      "data": {
+        "label": "IFC BIM Reader",
+        "nodeType": "ifc_bim_reader",
+        "category": "Reader",
+        "isSpatial": true,
+        "params": {
+          "path": "/workspace/samples/sample.ifc",
+          "ifc_class": "IfcBuildingElement",
+          "representation": "centroid",
+          "limit": 400
+        }
+      }
+    },
+    {
+      "id": "reproject-1",
+      "type": "etl",
+      "position": { "x": 360, "y": 120 },
+      "data": {
+        "label": "Reprojection",
+        "nodeType": "reproject",
+        "category": "Transformer",
+        "isSpatial": true,
+        "params": {
+          "source_crs": "EPSG:4326",
+          "target_crs": "EPSG:2154"
+        }
+      }
+    },
+    {
+      "id": "postgis_writer-1",
+      "type": "etl",
+      "position": { "x": 640, "y": 120 },
+      "data": {
+        "label": "PostGIS Writer",
+        "nodeType": "postgis_writer",
+        "category": "Writer",
+        "isSpatial": true,
+        "params": {
+          "schema_name": "gix_output",
+          "table": "bim_elements",
+          "geom_column": "geom",
+          "if_exists": "replace"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-ifc-reproject",
+      "source": "ifc_bim_reader-1",
+      "target": "reproject-1",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    },
+    {
+      "id": "e-reproject-pg",
+      "source": "reproject-1",
+      "target": "postgis_writer-1",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    }
+  ]
+}

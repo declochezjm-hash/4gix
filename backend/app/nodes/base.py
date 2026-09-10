@@ -77,6 +77,10 @@ def _as_feature_collection(payload: Any) -> Optional[Dict[str, Any]]:
     if payload is None:
         return None
     if isinstance(payload, dict):
+        if payload.get("type") in {"RasterDataset", "Raster"}:
+            return None
+        if payload.get("kind") == "raster":
+            return None
         if payload.get("type") == "FeatureCollection":
             return payload
         if payload.get("type") == "Feature":
@@ -167,6 +171,8 @@ def build_snapshot_from_payload(
     category: str = "",
     is_spatial: bool = False,
 ) -> Dict[str, Any]:
+    from app.core.raster_preview import compact_raster_payload, is_raster_payload
+
     fc = _as_feature_collection(payload)
     metadata: Dict[str, Any] = {
         "category": category,
@@ -174,6 +180,18 @@ def build_snapshot_from_payload(
     }
     if isinstance(payload, dict):
         metadata.update(payload.get("metadata") or {})
+
+    if is_raster_payload(payload):
+        preview = compact_raster_payload(payload)
+        return NodeSnapshot(
+            node_id=node_id,
+            node_type=node_type,
+            status="success",
+            duration_ms=duration_ms,
+            metadata=metadata,
+            preview=preview,
+            output_snapshot=preview,
+        ).to_dict()
 
     if fc is not None:
         metadata.setdefault("feature_count", len(fc.get("features") or []))
@@ -232,8 +250,15 @@ def unwrap_named_input(inputs: Dict[str, Any], handle: str) -> Any:
 
 
 def snapshot_payload(data: Any) -> Any:
+    from app.core.raster_preview import compact_raster_payload, is_raster_payload
+
     if isinstance(data, dict) and "data" in data:
-        data = data["data"]
+        inner = data["data"]
+        if is_raster_payload(data) or is_raster_payload(inner):
+            return compact_raster_payload(data)
+        data = inner
+    if is_raster_payload(data):
+        return compact_raster_payload(data)
     fc = _as_feature_collection(data)
     if fc is not None:
         return _preview_limit(fc)

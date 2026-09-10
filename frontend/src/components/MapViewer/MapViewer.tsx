@@ -1,6 +1,8 @@
+import { GeoJsonLayer } from "@deck.gl/layers";
+import { MapboxOverlay } from "@deck.gl/mapbox";
 import type { FeatureCollection } from "geojson";
 import maplibregl from "maplibre-gl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type { MapViewState } from "../../lib/api";
@@ -37,6 +39,16 @@ function extendBounds(
 	walk(geom.coordinates);
 }
 
+function elevationOf(feature: {
+	properties?: Record<string, unknown>;
+}): number {
+	const props = feature.properties || {};
+	const raw =
+		props.height ?? props.Elevation ?? props.OverallHeight ?? props.z_mean;
+	const value = Number(raw);
+	return Number.isFinite(value) && value > 0 ? value : 8;
+}
+
 export function MapViewer({
 	geojson,
 	view,
@@ -45,9 +57,11 @@ export function MapViewer({
 }: MapViewerProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
+	const overlayRef = useRef<MapboxOverlay | null>(null);
 	const applyingRef = useRef(false);
 	const onViewChangeRef = useRef(onViewChange);
 	onViewChangeRef.current = onViewChange;
+	const [mode3d, setMode3d] = useState(false);
 
 	useEffect(() => {
 		if (!containerRef.current || mapRef.current) return;
@@ -67,9 +81,11 @@ export function MapViewer({
 			},
 			center: [2.3, 46.5],
 			zoom: 4.4,
+			pitch: 0,
+			bearing: 0,
 		});
 		map.addControl(
-			new maplibregl.NavigationControl({ showCompass: false }),
+			new maplibregl.NavigationControl({ visualizePitch: true }),
 			"top-right",
 		);
 		map.on("load", () => {
@@ -102,6 +118,12 @@ export function MapViewer({
 				},
 				filter: ["==", "$type", "Point"],
 			});
+			const overlay = new MapboxOverlay({
+				interleaved: true,
+				layers: [],
+			});
+			map.addControl(overlay);
+			overlayRef.current = overlay;
 		});
 		map.on("moveend", () => {
 			if (applyingRef.current) return;
@@ -114,10 +136,21 @@ export function MapViewer({
 		});
 		mapRef.current = map;
 		return () => {
+			overlayRef.current = null;
 			map.remove();
 			mapRef.current = null;
 		};
 	}, [accent]);
+
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map) return;
+		map.easeTo({
+			pitch: mode3d ? 60 : 0,
+			bearing: mode3d ? -18 : 0,
+			duration: 400,
+		});
+	}, [mode3d]);
 
 	useEffect(() => {
 		const map = mapRef.current;
@@ -143,8 +176,26 @@ export function MapViewer({
 			const source = map.getSource("preview") as
 				| maplibregl.GeoJSONSource
 				| undefined;
-			if (!source) return;
-			source.setData(data as FeatureCollection);
+			if (source) source.setData(data as FeatureCollection);
+			overlayRef.current?.setProps({
+				layers: mode3d
+					? [
+							new GeoJsonLayer({
+								id: "bim-3d",
+								data: data as FeatureCollection,
+								extruded: true,
+								wireframe: true,
+								filled: true,
+								getElevation: elevationOf,
+								getFillColor: [42, 161, 152, 190],
+								getLineColor: [7, 54, 66, 255],
+								lineWidthMinPixels: 1,
+								pickable: true,
+								opacity: 0.85,
+							}),
+						]
+					: [],
+			});
 			if (view) return;
 			const features = data.features || [];
 			if (!features.length) return;
@@ -154,7 +205,7 @@ export function MapViewer({
 			}
 			if (!bounds.isEmpty()) {
 				applyingRef.current = true;
-				map.fitBounds(bounds, { padding: 32, maxZoom: 12, duration: 400 });
+				map.fitBounds(bounds, { padding: 32, maxZoom: 16, duration: 400 });
 				map.once("idle", () => {
 					applyingRef.current = false;
 					const center = map.getCenter();
@@ -168,7 +219,18 @@ export function MapViewer({
 		};
 		if (map.isStyleLoaded()) apply();
 		else map.once("load", apply);
-	}, [geojson, view]);
+	}, [geojson, view, mode3d]);
 
-	return <div ref={containerRef} className="map-viewer" />;
+	return (
+		<div className="map-viewer-wrap">
+			<button
+				type="button"
+				className={`map-mode ${mode3d ? "is-active" : ""}`}
+				onClick={() => setMode3d((value) => !value)}
+			>
+				{mode3d ? "3D BIM" : "2D"}
+			</button>
+			<div ref={containerRef} className="map-viewer" />
+		</div>
+	);
 }

@@ -3,6 +3,14 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
 	plugins: [react()],
+	optimizeDeps: {
+		include: [
+			"@deck.gl/core",
+			"@deck.gl/layers",
+			"@deck.gl/mapbox",
+			"maplibre-gl",
+		],
+	},
 	server: {
 		host: "0.0.0.0",
 		port: 5173,
