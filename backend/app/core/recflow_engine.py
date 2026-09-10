@@ -17,7 +17,12 @@ from typing import Any, Callable, Dict, List, Optional
 import networkx as nx
 
 from app.nodes import get_node_class
-from app.nodes.base import NodeSnapshot, build_snapshot_from_payload
+from app.nodes.base import NodeSnapshot, build_snapshot_from_payload, snapshot_payload
+
+try:
+    from app.core import persistence
+except Exception:  # noqa: BLE001
+    persistence = None  # type: ignore[assignment]
 
 
 class RecflowError(Exception):
@@ -37,6 +42,7 @@ class MissingNodeError(RecflowError):
 
 
 SnapshotCallback = Callable[[Dict[str, Any]], None]
+NodeStartCallback = Callable[[str], None]
 
 
 @dataclass
@@ -47,16 +53,29 @@ class ExecutionResult:
     outputs: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
     duration_ms: float = 0.0
+    logs: str = ""
+    workflow_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "execution_id": self.execution_id,
+            "workflow_id": self.workflow_id,
             "status": self.status,
             "snapshots": self.snapshots,
             "error": self.error,
             "duration_ms": self.duration_ms,
             "node_count": len(self.snapshots),
+            "logs": self.logs,
         }
+
+
+def _persist_safe(fn: Callable[..., None], *args: Any, **kwargs: Any) -> None:
+    if persistence is None:
+        return
+    try:
+        fn(*args, **kwargs)
+    except Exception:
+        traceback.print_exc()
 
 
 class RecflowEngine:
@@ -105,7 +124,6 @@ class RecflowEngine:
             edge_data = graph.get_edge_data(predecessor, node_id) or {}
             handle = edge_data.get("targetHandle") or "input"
             parent_output = outputs.get(predecessor, {})
-            # Un handle déjà présent agrège les parents en liste
             if handle in inputs:
                 existing = inputs[handle]
                 if not isinstance(existing, list):
@@ -120,24 +138,41 @@ class RecflowEngine:
         self,
         spec: Dict[str, Any],
         on_snapshot: Optional[SnapshotCallback] = None,
+        on_node_start: Optional[NodeStartCallback] = None,
+        persist: bool = True,
     ) -> ExecutionResult:
         execution_id = spec.get("execution_id") or str(uuid.uuid4())
+        workflow_id = spec.get("workflow_id")
         started = time.perf_counter()
         snapshots: List[Dict[str, Any]] = []
         outputs: Dict[str, Any] = {}
+        log_lines: List[str] = []
+
+        def log(message: str) -> None:
+            log_lines.append(message)
+            if persist:
+                _persist_safe(persistence.append_execution_log, execution_id, message)
+
+        if persist:
+            _persist_safe(persistence.create_execution, execution_id, workflow_id, "RUNNING")
 
         try:
             graph = self.build_graph(spec)
         except RecflowError as exc:
-            result = ExecutionResult(
+            log(f"FAILED graph: {exc}")
+            if persist:
+                _persist_safe(persistence.finish_execution, execution_id, "FAILED", "\n".join(log_lines))
+            return ExecutionResult(
                 execution_id=execution_id,
-                status="error",
+                workflow_id=workflow_id,
+                status="FAILED",
                 error=str(exc),
                 duration_ms=round((time.perf_counter() - started) * 1000, 3),
+                logs="\n".join(log_lines),
             )
-            return result
 
         order = self.topological_order(graph)
+        log(f"RUNNING topological_order={order}")
 
         for node_id in order:
             node_def = graph.nodes[node_id]
@@ -146,6 +181,9 @@ class RecflowEngine:
             if params is None:
                 params = (node_def.get("data") or {}).get("params") or {}
 
+            if on_node_start:
+                on_node_start(node_id)
+
             node_started = time.perf_counter()
             try:
                 node_cls = get_node_class(node_type)
@@ -153,24 +191,39 @@ class RecflowEngine:
                 snapshot = NodeSnapshot(
                     node_id=node_id,
                     node_type=str(node_type),
-                    status="error",
+                    status="FAILED",
                     duration_ms=round((time.perf_counter() - node_started) * 1000, 3),
                     error=str(exc),
                 ).to_dict()
                 snapshots.append(snapshot)
+                log(f"FAILED {node_id}: {exc}")
+                if persist:
+                    _persist_safe(
+                        persistence.upsert_node_snapshot,
+                        execution_id,
+                        node_id,
+                        None,
+                        {"error": str(exc)},
+                        int(snapshot["duration_ms"]),
+                    )
+                    _persist_safe(persistence.finish_execution, execution_id, "FAILED", "\n".join(log_lines))
                 if on_snapshot:
                     on_snapshot(snapshot)
                 return ExecutionResult(
                     execution_id=execution_id,
-                    status="error",
+                    workflow_id=workflow_id,
+                    status="FAILED",
                     snapshots=snapshots,
                     outputs=outputs,
                     error=str(exc),
                     duration_ms=round((time.perf_counter() - started) * 1000, 3),
+                    logs="\n".join(log_lines),
                 )
 
             inputs = self._collect_inputs(graph, node_id, outputs)
+            input_snapshot = {handle: snapshot_payload(value) for handle, value in inputs.items()}
             instance = node_cls()
+            log(f"RUNNING {node_id} ({node_cls.node_type})")
 
             try:
                 payload = instance.execute(inputs=inputs, params=params) or {}
@@ -186,9 +239,22 @@ class RecflowEngine:
                 if "duration_ms" not in snapshot or snapshot.get("duration_ms") is None:
                     snapshot["duration_ms"] = duration_ms
                 snapshot["node_id"] = node_id
-                snapshot["status"] = snapshot.get("status") or "success"
+                snapshot["status"] = "COMPLETED"
+                snapshot["input_snapshot"] = input_snapshot
+                if snapshot.get("output_snapshot") is None:
+                    snapshot["output_snapshot"] = snapshot.get("preview")
                 outputs[node_id] = payload
                 snapshots.append(snapshot)
+                log(f"COMPLETED {node_id} in {duration_ms} ms")
+                if persist:
+                    _persist_safe(
+                        persistence.upsert_node_snapshot,
+                        execution_id,
+                        node_id,
+                        input_snapshot,
+                        snapshot.get("output_snapshot"),
+                        int(duration_ms),
+                    )
                 if on_snapshot:
                     on_snapshot(snapshot)
             except Exception as exc:  # noqa: BLE001 — surface d'erreur runtime des nœuds
@@ -196,27 +262,46 @@ class RecflowEngine:
                 snapshot = NodeSnapshot(
                     node_id=node_id,
                     node_type=node_cls.node_type,
-                    status="error",
+                    status="FAILED",
                     duration_ms=duration_ms,
                     error=str(exc),
                     metadata={"traceback": traceback.format_exc()},
+                    input_snapshot=input_snapshot,
                 ).to_dict()
                 snapshots.append(snapshot)
+                log(f"FAILED {node_id}: {exc}")
+                if persist:
+                    _persist_safe(
+                        persistence.upsert_node_snapshot,
+                        execution_id,
+                        node_id,
+                        input_snapshot,
+                        {"error": str(exc)},
+                        int(duration_ms),
+                    )
+                    _persist_safe(persistence.finish_execution, execution_id, "FAILED", "\n".join(log_lines))
                 if on_snapshot:
                     on_snapshot(snapshot)
                 return ExecutionResult(
                     execution_id=execution_id,
-                    status="error",
+                    workflow_id=workflow_id,
+                    status="FAILED",
                     snapshots=snapshots,
                     outputs=outputs,
                     error=f"Échec du nœud `{node_id}` ({node_cls.node_type}): {exc}",
                     duration_ms=round((time.perf_counter() - started) * 1000, 3),
+                    logs="\n".join(log_lines),
                 )
 
+        logs = "\n".join(log_lines)
+        if persist:
+            _persist_safe(persistence.finish_execution, execution_id, "COMPLETED", logs)
         return ExecutionResult(
             execution_id=execution_id,
-            status="success",
+            workflow_id=workflow_id,
+            status="COMPLETED",
             snapshots=snapshots,
             outputs=outputs,
             duration_ms=round((time.perf_counter() - started) * 1000, 3),
+            logs=logs,
         )

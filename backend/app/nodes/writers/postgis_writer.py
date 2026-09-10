@@ -26,7 +26,7 @@ class PostGISWriter(Base4GIxNode):
                 "schema_name": {
                     "type": "string",
                     "title": "Schéma",
-                    "default": "etl",
+                    "default": "gix_output",
                 },
                 "table": {
                     "type": "string",
@@ -54,7 +54,7 @@ class PostGISWriter(Base4GIxNode):
         if fc is None:
             raise ValueError("Aucune géométrie à écrire dans PostGIS.")
 
-        schema_name = simple_identifier(params.get("schema_name") or "etl")
+        schema_name = simple_identifier(params.get("schema_name") or "gix_output")
         table = simple_identifier(params.get("table") or "output_layer")
         geom_column = simple_identifier(params.get("geom_column") or "geom")
         if_exists = params.get("if_exists") or "replace"

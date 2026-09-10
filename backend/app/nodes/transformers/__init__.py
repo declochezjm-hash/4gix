@@ -4,10 +4,12 @@ from app.nodes.transformers.spatial import (
     FilterTransformer,
     ReprojectTransformer,
 )
+from app.nodes.transformers.spatial_join import SpatialJoinNode
 
 __all__ = [
     "ReprojectTransformer",
     "BufferTransformer",
     "FilterTransformer",
     "AttributeMapperTransformer",
+    "SpatialJoinNode",
 ]

@@ -9,6 +9,7 @@ from app.nodes.transformers import (
     BufferTransformer,
     FilterTransformer,
     ReprojectTransformer,
+    SpatialJoinNode,
 )
 from app.nodes.writers import FileWriter, PostGISWriter
 
@@ -22,6 +23,7 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
         BufferTransformer,
         FilterTransformer,
         AttributeMapperTransformer,
+        SpatialJoinNode,
         PostGISWriter,
         FileWriter,
     )

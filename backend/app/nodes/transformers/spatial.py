@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict
 
 import geopandas as gpd
+from shapely.geometry import shape
 
 from app.nodes.base import Base4GIxNode, _as_feature_collection, unwrap_input_data
 
@@ -24,11 +25,13 @@ class ReprojectTransformer(Base4GIxNode):
                 "source_crs": {
                     "type": "string",
                     "title": "CRS source",
+                    "format": "epsg",
                     "default": "EPSG:4326",
                 },
                 "target_crs": {
                     "type": "string",
                     "title": "CRS cible",
+                    "format": "epsg",
                     "default": "EPSG:2154",
                     "description": "Ex. EPSG:2154 (Lambert-93), EPSG:3857 (Web Mercator).",
                 },
@@ -73,8 +76,12 @@ class BufferTransformer(Base4GIxNode):
             "properties": {
                 "distance": {
                     "type": "number",
-                    "title": "Distance",
+                    "title": "Distance de buffer",
+                    "format": "slider",
                     "default": 0.01,
+                    "minimum": 0.001,
+                    "maximum": 1,
+                    "multipleOf": 0.001,
                     "description": "En degrés si CRS=4326, en mètres si CRS projeté.",
                 },
                 "resolution": {
@@ -211,9 +218,9 @@ class AttributeMapperTransformer(Base4GIxNode):
             "properties": {
                 "mapping": {
                     "type": "string",
-                    "title": "Mapping JSON",
-                    "format": "textarea",
-                    "description": '{"ancien_nom": "nouveau_nom"}',
+                    "title": "Mapping de colonnes",
+                    "format": "mapping",
+                    "description": "Ancien nom → nouveau nom",
                     "default": '{"name": "nom"}',
                 },
                 "keep_unmapped": {

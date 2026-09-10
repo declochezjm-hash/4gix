@@ -14,6 +14,7 @@ class Base4GIxNode(ABC):
     is_spatial: bool = False
     label: str = ""
     description: str = ""
+    input_handles: List[str] = ["input"]
 
     @classmethod
     @abstractmethod
@@ -40,6 +41,7 @@ class Base4GIxNode(ABC):
             "label": cls.label or schema.get("title") or cls.node_type,
             "description": cls.description or schema.get("description") or "",
             "schema": schema,
+            "input_handles": list(cls.input_handles or ["input"]),
         }
 
 
@@ -53,6 +55,8 @@ class NodeSnapshot:
     duration_ms: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     preview: Optional[Dict[str, Any]] = None
+    input_snapshot: Optional[Any] = None
+    output_snapshot: Optional[Any] = None
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -63,6 +67,8 @@ class NodeSnapshot:
             "duration_ms": self.duration_ms,
             "metadata": self.metadata,
             "preview": self.preview,
+            "input_snapshot": self.input_snapshot,
+            "output_snapshot": self.output_snapshot,
             "error": self.error,
         }
 
@@ -180,6 +186,9 @@ def build_snapshot_from_payload(
         if isinstance(payload, dict) and isinstance(payload.get("data"), list):
             metadata.setdefault("record_count", len(payload["data"]))
 
+    output_snapshot = fc if fc is not None else extract_json_preview(
+        payload.get("data") if isinstance(payload, dict) else payload
+    )
     return NodeSnapshot(
         node_id=node_id,
         node_type=node_type,
@@ -187,7 +196,14 @@ def build_snapshot_from_payload(
         duration_ms=duration_ms,
         metadata=metadata,
         preview=preview,
+        output_snapshot=output_snapshot,
     ).to_dict()
+
+
+def unwrap_handle(raw: Any) -> Any:
+    if isinstance(raw, dict) and "data" in raw:
+        return raw["data"]
+    return raw
 
 
 def unwrap_input_data(inputs: Dict[str, Any]) -> Any:
@@ -197,9 +213,31 @@ def unwrap_input_data(inputs: Dict[str, Any]) -> Any:
     raw = inputs.get("input")
     if raw is None and len(inputs) == 1:
         raw = next(iter(inputs.values()))
-    if isinstance(raw, dict) and "data" in raw:
-        return raw["data"]
-    return raw
+    return unwrap_handle(raw)
+
+
+def unwrap_named_input(inputs: Dict[str, Any], handle: str) -> Any:
+    if not inputs:
+        return None
+    if handle in inputs:
+        return unwrap_handle(inputs[handle])
+    aliases = {
+        "input_a": ["a", "left", "input"],
+        "input_b": ["b", "right"],
+    }
+    for alias in aliases.get(handle, []):
+        if alias in inputs:
+            return unwrap_handle(inputs[alias])
+    return None
+
+
+def snapshot_payload(data: Any) -> Any:
+    if isinstance(data, dict) and "data" in data:
+        data = data["data"]
+    fc = _as_feature_collection(data)
+    if fc is not None:
+        return _preview_limit(fc)
+    return extract_json_preview(data)
 
 
 def records_from_geojson(data: Any) -> List[Dict[str, Any]]:

@@ -1,14 +1,26 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.execution import router as execution_router
 from app.api.nodes_catalog import router as catalog_router
+from app.api.workflows import router as workflows_router
 from app.core.config import settings
+from app.core.db import ensure_schema
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_schema()
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
     description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine + catalogue de nœuds.",
-    version="0.1.0",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -21,6 +33,7 @@ app.add_middleware(
 
 app.include_router(execution_router)
 app.include_router(catalog_router)
+app.include_router(workflows_router)
 
 
 @app.get("/health")
@@ -44,4 +57,6 @@ def root() -> dict:
         "health": "/health",
         "catalog": "/api/nodes",
         "execute": "/api/execute",
+        "workflows": "/api/workflows",
+        "ws": "/api/ws/execute",
     }

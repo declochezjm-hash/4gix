@@ -28,6 +28,37 @@ SAMPLE_GEOJSON = {
 }
 
 
+SAMPLE_REGIONS = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"name": "Île-de-France", "code": "IDF"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[1.4, 48.1], [3.6, 48.1], [3.6, 49.2], [1.4, 49.2], [1.4, 48.1]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Auvergne-Rhône-Alpes", "code": "ARA"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[3.6, 44.6], [7.2, 44.6], [7.2, 46.8], [3.6, 46.8], [3.6, 44.6]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Provence-Alpes-Côte d'Azur", "code": "PAC"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[4.2, 42.9], [7.8, 42.9], [7.8, 44.9], [4.2, 44.9], [4.2, 42.9]]],
+            },
+        },
+    ],
+}
+
+
 class GeoJSONReader(Base4GIxNode):
     node_type = "geojson_reader"
     category = "Reader"
@@ -42,6 +73,13 @@ class GeoJSONReader(Base4GIxNode):
             "description": "Source GeoJSON inline.",
             "type": "object",
             "properties": {
+                "sample_set": {
+                    "type": "string",
+                    "title": "Jeu d'exemple",
+                    "enum": ["cities", "regions"],
+                    "enumNames": ["Villes (points)", "Régions (polygones)"],
+                    "default": "cities",
+                },
                 "geojson": {
                     "type": "string",
                     "title": "GeoJSON",
@@ -60,10 +98,11 @@ class GeoJSONReader(Base4GIxNode):
     def execute(self, inputs: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
         raw = (params.get("geojson") or "").strip()
         use_sample = params.get("use_sample", True)
+        sample_set = params.get("sample_set") or "cities"
         if raw:
             parsed = json.loads(raw) if isinstance(raw, str) else raw
         elif use_sample:
-            parsed = SAMPLE_GEOJSON
+            parsed = SAMPLE_REGIONS if sample_set == "regions" else SAMPLE_GEOJSON
         else:
             parsed = {"type": "FeatureCollection", "features": []}
 

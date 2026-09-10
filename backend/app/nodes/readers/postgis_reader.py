@@ -39,7 +39,7 @@ class PostGISReader(Base4GIxNode):
                 "sql": {
                     "type": "string",
                     "title": "Requête SQL (optionnelle)",
-                    "format": "textarea",
+                    "format": "sql",
                     "description": "Si renseignée, remplace la lecture de table.",
                 },
                 "limit": {
