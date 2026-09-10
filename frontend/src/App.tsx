@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
-import { NodePalette } from "./components/Canvas/NodePalette";
-import { NodeInspector } from "./components/NodeModal/NodeInspector";
+import { NodePanelRight } from "./components/Canvas/NodePanelRight";
+import { NodeModal } from "./components/NodeModal/NodeModal";
 import { useDagStore } from "./store/dagStore";
 
 export default function App() {
@@ -10,6 +10,7 @@ export default function App() {
 	const loadWorkflow = useDagStore((s) => s.loadWorkflow);
 	const saveCurrentWorkflow = useDagStore((s) => s.saveCurrentWorkflow);
 	const runDag = useDagStore((s) => s.runDag);
+	const openNodePanel = useDagStore((s) => s.openNodePanel);
 	const running = useDagStore((s) => s.running);
 	const error = useDagStore((s) => s.error);
 	const lastExecution = useDagStore((s) => s.lastExecution);
@@ -31,7 +32,7 @@ export default function App() {
 					<span className="logo">4GIx</span>
 					<div>
 						<strong>Recflow Canvas</strong>
-						<small>ETL / ELT géospatial — inspecteur synchro Phase 2</small>
+						<small>Workbench n8n · FME / SIG</small>
 					</div>
 				</div>
 				<div className="topbar__actions">
@@ -70,24 +71,32 @@ export default function App() {
 							ms · {lastExecution.node_count} nœuds
 						</span>
 					) : (
-						<span className="status">{nodes.length} nœud(s) sur le canvas</span>
+						<span className="status">{nodes.length} nœud(s)</span>
 					)}
 					{error ? <span className="status status--error">{error}</span> : null}
+					<button
+						type="button"
+						className="canvas-plus canvas-plus--bar"
+						aria-label="Ajouter un nœud"
+						onClick={() => openNodePanel(null)}
+					>
+						+
+					</button>
 					<button
 						type="button"
 						className="run-btn"
 						onClick={() => void runDag()}
 						disabled={running || nodes.length === 0}
 					>
-						{running ? "Exécution…" : "Exécuter le DAG"}
+						{running ? "Exécution…" : "Execute workflow"}
 					</button>
 				</div>
 			</header>
 			<div className="workspace">
-				<NodePalette />
 				<main className="workspace__main">
 					<FlowCanvas />
-					<NodeInspector />
+					<NodePanelRight />
+					<NodeModal />
 				</main>
 			</div>
 		</div>

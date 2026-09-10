@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
 
@@ -250,6 +250,8 @@ export function ConfigWindow() {
 	const nodes = useDagStore((s) => s.nodes);
 	const catalog = useDagStore((s) => s.catalog);
 	const updateNodeParams = useDagStore((s) => s.updateNodeParams);
+	const updateNodeData = useDagStore((s) => s.updateNodeData);
+	const [tab, setTab] = useState<"parameters" | "settings">("parameters");
 	const node = nodes.find((n) => n.id === selectedNodeId);
 	const catalogEntry = catalog.find(
 		(item) => item.node_type === node?.data.nodeType,
@@ -262,9 +264,9 @@ export function ConfigWindow() {
 
 	if (!node) {
 		return (
-			<section className="inspector-pane">
+			<section className="inspector-pane n8n-code-pane">
 				<header>
-					<h3>Config</h3>
+					<h3>CONFIGURATION</h3>
 				</header>
 				<div className="empty">Sélectionnez un nœud.</div>
 			</section>
@@ -272,32 +274,80 @@ export function ConfigWindow() {
 	}
 
 	return (
-		<section className="inspector-pane">
+		<section className="inspector-pane n8n-code-pane">
 			<header>
-				<h3>Config</h3>
+				<h3>CONFIGURATION</h3>
 				<p>
 					{node.data.schema?.description ||
 						catalogEntry?.description ||
 						node.data.nodeType}
 				</p>
+				<div className="pane-tabs" role="tablist">
+					<button
+						type="button"
+						className={tab === "parameters" ? "is-active" : ""}
+						onClick={() => setTab("parameters")}
+					>
+						Parameters
+					</button>
+					<button
+						type="button"
+						className={tab === "settings" ? "is-active" : ""}
+						onClick={() => setTab("settings")}
+					>
+						Settings
+					</button>
+				</div>
 			</header>
-			<form className="config-form" onSubmit={(e) => e.preventDefault()}>
-				{Object.keys(properties).length === 0 ? (
-					<div className="empty">Aucun paramètre exposé par get_schema().</div>
-				) : (
-					Object.entries(properties).map(([name, prop]) => (
-						<Field
-							key={name}
-							name={name}
-							prop={prop}
-							value={node.data.params[name]}
-							onChange={(key, value) =>
-								updateNodeParams(node.id, { [key]: value })
+			{tab === "settings" ? (
+				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
+					<label>
+						Node name
+						<input
+							value={node.data.label}
+							onChange={(e) =>
+								updateNodeData(node.id, { label: e.target.value })
 							}
 						/>
-					))
-				)}
-			</form>
+					</label>
+					<label>
+						Notes
+						<textarea
+							className="sql-field"
+							rows={6}
+							placeholder="Notes, expressions SQL / Python…"
+							value={node.data.notes || ""}
+							onChange={(e) =>
+								updateNodeData(node.id, { notes: e.target.value })
+							}
+						/>
+					</label>
+					<label>
+						Type
+						<input value={node.data.nodeType} readOnly />
+					</label>
+				</form>
+			) : (
+				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
+					{Object.keys(properties).length === 0 ? (
+						<div className="empty">
+							Aucun paramètre exposé par get_schema().
+						</div>
+					) : (
+						Object.entries(properties).map(([name, prop]) => (
+							<Field
+								key={name}
+								name={name}
+								prop={prop}
+								value={node.data.params[name]}
+								onChange={(key, value) =>
+									updateNodeParams(node.id, { [key]: value })
+								}
+							/>
+						))
+					)}
+				</form>
+			)}
 		</section>
 	);
 }

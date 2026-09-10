@@ -22,6 +22,9 @@ export function FlowCanvas() {
 	const onEdgesChange = useDagStore((s) => s.onEdgesChange);
 	const onConnect = useDagStore((s) => s.onConnect);
 	const selectNode = useDagStore((s) => s.selectNode);
+	const openInspector = useDagStore((s) => s.openInspector);
+	const openNodePanel = useDagStore((s) => s.openNodePanel);
+	const closeNodePanel = useDagStore((s) => s.closeNodePanel);
 	const addCatalogNode = useDagStore((s) => s.addCatalogNode);
 
 	const onDrop = useCallback(
@@ -43,8 +46,30 @@ export function FlowCanvas() {
 	);
 
 	const defaultEdgeOptions = useMemo(
-		() => ({ type: "smoothstep" as const, animated: true }),
+		() => ({
+			type: "default" as const,
+			animated: false,
+			style: { stroke: "#8a8d93", strokeWidth: 2 },
+		}),
 		[],
+	);
+
+	const onConnectEnd = useCallback(
+		(event: MouseEvent | TouchEvent, state: Record<string, unknown>) => {
+			const fromNode = state.fromNode as { id: string } | undefined;
+			const fromHandle = state.fromHandle as
+				| { id?: string | null; type?: string | null }
+				| undefined;
+			if (state.isValid) return;
+			if (fromHandle?.type !== "source" || !fromNode) return;
+			const target = event.target as HTMLElement | null;
+			if (target?.closest(".n8n-panel")) return;
+			openNodePanel({
+				nodeId: fromNode.id,
+				handleId: fromHandle.id || "output",
+			});
+		},
+		[openNodePanel],
 	);
 
 	return (
@@ -61,26 +86,43 @@ export function FlowCanvas() {
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
+				onConnectEnd={onConnectEnd}
 				onNodeClick={(_, node) => selectNode(node.id)}
-				onPaneClick={() => selectNode(null)}
+				onNodeDoubleClick={(_, node) => openInspector(node.id)}
+				onPaneClick={() => {
+					selectNode(null);
+					closeNodePanel();
+				}}
 				nodeTypes={nodeTypes}
 				fitView
 				defaultEdgeOptions={defaultEdgeOptions}
+				connectionLineStyle={{ stroke: "#8a8d93", strokeWidth: 2 }}
+				proOptions={{ hideAttribution: true }}
 			>
 				<Background
+					id="n8n-dots"
 					variant={BackgroundVariant.Dots}
-					gap={18}
-					size={1}
-					color="#1d3a3a"
+					gap={22}
+					size={1.15}
+					color="#3a3b40"
 				/>
 				<MiniMap
 					pannable
 					zoomable
-					maskColor="rgba(7, 22, 22, 0.7)"
-					nodeColor={() => "#2aa198"}
+					maskColor="rgba(20, 20, 22, 0.72)"
+					nodeColor={() => "#5b5e66"}
 				/>
 				<Controls />
 			</ReactFlow>
+			<button
+				type="button"
+				className="canvas-plus"
+				aria-label="Ajouter un nœud"
+				title="Ajouter un nœud"
+				onClick={() => openNodePanel(null)}
+			>
+				+
+			</button>
 		</div>
 	);
 }

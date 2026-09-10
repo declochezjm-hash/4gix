@@ -8,11 +8,11 @@ export function InputWindow() {
 
 	return (
 		<DataPane
-			title="Input"
-			subtitle="Snapshot d'entrée (nœuds parents)"
+			title="INPUT"
+			subtitle="Arborescence JSON · Tableau · Carte MapLibre"
 			data={snapshot?.input_snapshot ?? null}
-			empty="Aucun snapshot d'entrée. Exécutez le DAG puis cliquez un nœud."
-			accent="#268bd2"
+			empty="Aucune donnée d'entrée. Lancez Test step pour exécuter ce nœud."
+			accent="#3B82F6"
 		/>
 	);
 }

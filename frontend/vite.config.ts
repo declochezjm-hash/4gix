@@ -11,6 +11,11 @@ export default defineConfig({
 			"maplibre-gl",
 		],
 	},
+	css: {
+		postcss: {
+			plugins: [],
+		},
+	},
 	server: {
 		host: "0.0.0.0",
 		port: 5173,

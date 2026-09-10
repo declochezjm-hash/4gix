@@ -9,15 +9,15 @@ export function OutputWindow() {
 
 	return (
 		<DataPane
-			title="Output"
+			title="OUTPUT"
 			subtitle={
 				snapshot
 					? `${snapshot.status} · ${Math.round(snapshot.duration_ms || 0)} ms`
-					: "Snapshot Recflow après exécution"
+					: "Entités résultantes · MapLibre / Deck.gl 3D"
 			}
 			data={data}
-			empty="Aucun snapshot de sortie. Exécutez le graphe pour inspecter le résultat."
-			accent="#2aa198"
+			empty="Aucune sortie. Execute Node pour inspecter fme_feature_type, attributs et géométrie."
+			accent="#22C55E"
 		/>
 	);
 }

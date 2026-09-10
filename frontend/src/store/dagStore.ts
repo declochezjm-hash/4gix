@@ -26,6 +26,11 @@ import {
 
 type NodeStatus = NonNullable<FlowNodeData["status"]>;
 
+export type PendingConnect = {
+	nodeId: string;
+	handleId: string;
+};
+
 type DagState = {
 	nodes: Node<FlowNodeData>[];
 	edges: Edge[];
@@ -39,6 +44,8 @@ type DagState = {
 	running: boolean;
 	error: string | null;
 	inspectorOpen: boolean;
+	nodePanelOpen: boolean;
+	pendingConnect: PendingConnect | null;
 	mapView: MapViewState | null;
 	onNodesChange: (changes: NodeChange<Node<FlowNodeData>>[]) => void;
 	onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
@@ -46,9 +53,14 @@ type DagState = {
 	addCatalogNode: (
 		entry: CatalogNode,
 		position?: { x: number; y: number },
-	) => void;
+	) => string;
+	insertNodeFromPanel: (entry: CatalogNode) => void;
 	selectNode: (id: string | null) => void;
+	openInspector: (id?: string | null) => void;
+	openNodePanel: (pending?: PendingConnect | null) => void;
+	closeNodePanel: () => void;
 	updateNodeParams: (id: string, params: Record<string, unknown>) => void;
+	updateNodeData: (id: string, patch: Partial<FlowNodeData>) => void;
 	setMapView: (view: MapViewState) => void;
 	setWorkflowName: (name: string) => void;
 	loadCatalog: () => Promise<void>;
@@ -56,6 +68,7 @@ type DagState = {
 	loadWorkflow: (id: string) => void;
 	saveCurrentWorkflow: () => Promise<void>;
 	runDag: () => Promise<void>;
+	runSelectedNode: () => Promise<void>;
 	closeInspector: () => void;
 };
 
@@ -107,6 +120,47 @@ function applyStatus(
 	);
 }
 
+function ancestorsOf(nodeId: string, edges: Edge[]): Set<string> {
+	const incoming = new Map<string, string[]>();
+	for (const edge of edges) {
+		const list = incoming.get(edge.target) || [];
+		list.push(edge.source);
+		incoming.set(edge.target, list);
+	}
+	const seen = new Set<string>();
+	const stack = [nodeId];
+	while (stack.length) {
+		const id = stack.pop() as string;
+		if (seen.has(id)) continue;
+		seen.add(id);
+		for (const parent of incoming.get(id) || []) stack.push(parent);
+	}
+	return seen;
+}
+
+function buildNode(entry: CatalogNode, position: { x: number; y: number }) {
+	const id = `${entry.node_type}-${nodeSeq++}`;
+	const node: Node<FlowNodeData> = {
+		id,
+		type: "etl",
+		position,
+		data: {
+			label: entry.label,
+			nodeType: entry.node_type,
+			category: entry.category,
+			isSpatial: entry.is_spatial,
+			params: schemaDefaults(entry),
+			schema: entry.schema,
+			status: "idle",
+			inputHandles: entry.input_handles || ["input"],
+			outputHandles: entry.output_handles || ["output"],
+			fmeGroup: entry.fme_group || "",
+			notes: "",
+		},
+	};
+	return node;
+}
+
 let nodeSeq = 1;
 
 export const useDagStore = create<DagState>((set, get) => ({
@@ -122,6 +176,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 	running: false,
 	error: null,
 	inspectorOpen: false,
+	nodePanelOpen: false,
+	pendingConnect: null,
 	mapView: null,
 
 	onNodesChange: (changes) =>
@@ -133,58 +189,92 @@ export const useDagStore = create<DagState>((set, get) => ({
 	onConnect: (connection) =>
 		set({
 			edges: addEdge(
-				{ ...connection, animated: true, type: "smoothstep" },
+				{ ...connection, type: "default", animated: false },
 				get().edges,
 			),
+			pendingConnect: null,
 		}),
 
 	addCatalogNode: (entry, position) => {
-		const id = `${entry.node_type}-${nodeSeq++}`;
-		const node: Node<FlowNodeData> = {
-			id,
-			type: "etl",
-			position: position || {
+		const node = buildNode(
+			entry,
+			position || {
 				x: 120 + (nodeSeq % 5) * 40,
 				y: 80 + nodeSeq * 28,
 			},
-			data: {
-				label: entry.label,
-				nodeType: entry.node_type,
-				category: entry.category,
-				isSpatial: entry.is_spatial,
-				params: schemaDefaults(entry),
-				schema: entry.schema,
-				status: "idle",
-				inputHandles: entry.input_handles || ["input"],
-				outputHandles: entry.output_handles || ["output"],
-				fmeGroup: entry.fme_group || "",
-			},
-		};
+		);
 		set({
 			nodes: [...get().nodes, node],
-			selectedNodeId: id,
-			inspectorOpen: true,
+			selectedNodeId: node.id,
+			inspectorOpen: false,
+			nodePanelOpen: false,
+			pendingConnect: null,
+		});
+		return node.id;
+	},
+
+	insertNodeFromPanel: (entry) => {
+		const { pendingConnect, selectedNodeId, nodes, edges } = get();
+		const sourceId = pendingConnect?.nodeId || selectedNodeId;
+		const source = nodes.find((node) => node.id === sourceId);
+		const position = source
+			? { x: source.position.x + 240, y: source.position.y }
+			: { x: 280 + (nodes.length % 4) * 40, y: 140 + nodes.length * 12 };
+		const node = buildNode(entry, position);
+		let nextEdges = edges;
+		if (source) {
+			const sourceHandle =
+				pendingConnect?.handleId || source.data.outputHandles?.[0] || "output";
+			const targetHandle = entry.input_handles?.[0] || "input";
+			nextEdges = addEdge(
+				{
+					source: source.id,
+					sourceHandle,
+					target: node.id,
+					targetHandle,
+					type: "default",
+				},
+				edges,
+			);
+		}
+		set({
+			nodes: [...nodes, node],
+			edges: nextEdges,
+			selectedNodeId: node.id,
+			nodePanelOpen: false,
+			pendingConnect: null,
+			inspectorOpen: false,
 		});
 	},
 
 	selectNode: (id) => {
-		set({ selectedNodeId: id, inspectorOpen: Boolean(id) });
+		set({ selectedNodeId: id });
+	},
+
+	openInspector: (id) => {
+		const nodeId = id ?? get().selectedNodeId;
+		if (!nodeId) return;
+		set({
+			selectedNodeId: nodeId,
+			inspectorOpen: true,
+			nodePanelOpen: false,
+		});
 		const executionId = get().lastExecution?.execution_id;
-		if (!id || !executionId) return;
-		const existing = get().snapshots[id];
+		if (!executionId) return;
+		const existing = get().snapshots[nodeId];
 		if (
 			existing?.input_snapshot !== undefined ||
 			existing?.output_snapshot !== undefined
 		)
 			return;
-		void fetchNodeSnapshot(executionId, id)
+		void fetchNodeSnapshot(executionId, nodeId)
 			.then((remote) => {
 				set({
 					snapshots: {
 						...get().snapshots,
-						[id]: {
+						[nodeId]: {
 							...(existing || {
-								node_id: id,
+								node_id: nodeId,
 								node_type: "",
 								status: "COMPLETED",
 								duration_ms: remote.execution_time_ms,
@@ -201,6 +291,15 @@ export const useDagStore = create<DagState>((set, get) => ({
 			.catch(() => undefined);
 	},
 
+	openNodePanel: (pending = null) =>
+		set({
+			nodePanelOpen: true,
+			pendingConnect: pending,
+			inspectorOpen: false,
+		}),
+
+	closeNodePanel: () => set({ nodePanelOpen: false, pendingConnect: null }),
+
 	updateNodeParams: (id, params) =>
 		set({
 			nodes: get().nodes.map((node) =>
@@ -213,6 +312,13 @@ export const useDagStore = create<DagState>((set, get) => ({
 							},
 						}
 					: node,
+			),
+		}),
+
+	updateNodeData: (id, patch) =>
+		set({
+			nodes: get().nodes.map((node) =>
+				node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
 			),
 		}),
 
@@ -262,6 +368,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 			snapshots: {},
 			lastExecution: null,
 			selectedNodeId: null,
+			inspectorOpen: false,
+			nodePanelOpen: false,
 		});
 	},
 
@@ -287,124 +395,156 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	runDag: async () => {
-		const { nodes, edges, workflowId, workflowName } = get();
-		set({
-			running: true,
-			error: null,
-			snapshots: {},
-			mapView: null,
-			nodes: nodes.map((node) => ({
-				...node,
-				data: {
-					...node.data,
-					status: "idle",
-					durationMs: undefined,
-					error: null,
-				},
-			})),
-		});
+		await executeViaSocket(get, set);
+	},
 
-		const payload = graphPayload(get().nodes, edges, {
-			name: workflowName,
-			workflow_id: workflowId,
-		});
-
-		await new Promise<void>((resolve) => {
-			let settled = false;
-			const finish = () => {
-				if (settled) return;
-				settled = true;
-				resolve();
-			};
-
-			try {
-				const socket = new WebSocket(wsExecuteUrl());
-				socket.onopen = () => socket.send(JSON.stringify(payload));
-				socket.onmessage = (event) => {
-					const message = JSON.parse(event.data) as {
-						type: string;
-						payload: Record<string, unknown>;
-					};
-					if (message.type === "node_running") {
-						const nodeId = String(message.payload.node_id || "");
-						set({ nodes: applyStatus(get().nodes, nodeId, "RUNNING") });
-					}
-					if (message.type === "snapshot") {
-						const snapshot = message.payload as unknown as NodeSnapshot;
-						const failed =
-							snapshot.status === "FAILED" || snapshot.status === "error";
-						set({
-							snapshots: { ...get().snapshots, [snapshot.node_id]: snapshot },
-							nodes: applyStatus(
-								get().nodes,
-								snapshot.node_id,
-								failed ? "FAILED" : "COMPLETED",
-								{
-									durationMs: snapshot.duration_ms,
-									error: snapshot.error || null,
-								},
-							),
-						});
-					}
-					if (message.type === "completed" || message.type === "failed") {
-						const result = message.payload as unknown as ExecutionResult;
-						const snapshots: Record<string, NodeSnapshot> = {
-							...get().snapshots,
-						};
-						for (const snapshot of result.snapshots || []) {
-							snapshots[snapshot.node_id] = snapshot;
-						}
-						set({
-							lastExecution: result,
-							snapshots,
-							running: false,
-							error:
-								result.status === "FAILED" || result.status === "error"
-									? result.error || "Échec d'exécution"
-									: null,
-							nodes: get().nodes.map((node) => {
-								const snap = snapshots[node.id];
-								if (!snap) return node;
-								const failed =
-									snap.status === "FAILED" || snap.status === "error";
-								return {
-									...node,
-									data: {
-										...node.data,
-										status: failed ? "FAILED" : "COMPLETED",
-										durationMs: snap.duration_ms,
-										error: snap.error || null,
-									},
-								};
-							}),
-						});
-						finish();
-					}
-					if (message.type === "error") {
-						set({
-							running: false,
-							error: String(message.payload.error || "Erreur WebSocket"),
-						});
-						finish();
-					}
-				};
-				socket.onerror = () => {
-					set({ running: false, error: "Connexion WebSocket impossible." });
-					finish();
-				};
-				socket.onclose = () => {
-					if (get().running) {
-						set({ running: false });
-					}
-					finish();
-				};
-			} catch (err) {
-				set({
-					running: false,
-					error: err instanceof Error ? err.message : "Échec d'exécution",
-				});
-				finish();
-			}
-		});
+	runSelectedNode: async () => {
+		const { selectedNodeId, nodes, edges } = get();
+		if (!selectedNodeId) {
+			await executeViaSocket(get, set);
+			return;
+		}
+		const keep = ancestorsOf(selectedNodeId, edges);
+		await executeViaSocket(
+			get,
+			set,
+			nodes.filter((node) => keep.has(node.id)),
+			edges.filter(
+				(edge) => keep.has(edge.source) && keep.has(edge.target),
+			),
+		);
 	},
 }));
+
+async function executeViaSocket(
+	get: () => DagState,
+	set: (partial: Partial<DagState> | ((state: DagState) => Partial<DagState>)) => void,
+	subsetNodes?: Node<FlowNodeData>[],
+	subsetEdges?: Edge[],
+) {
+	const { workflowId, workflowName } = get();
+	const nodes = subsetNodes || get().nodes;
+	const edges = subsetEdges || get().edges;
+	const targetIds = new Set(nodes.map((node) => node.id));
+	set({
+		running: true,
+		error: null,
+		mapView: null,
+		nodes: get().nodes.map((node) =>
+			targetIds.has(node.id)
+				? {
+						...node,
+						data: {
+							...node.data,
+							status: "idle",
+							durationMs: undefined,
+							error: null,
+						},
+					}
+				: node,
+		),
+	});
+
+	const payload = graphPayload(nodes, edges, {
+		name: workflowName,
+		workflow_id: workflowId,
+	});
+
+	await new Promise<void>((resolve) => {
+		let settled = false;
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			resolve();
+		};
+
+		try {
+			const socket = new WebSocket(wsExecuteUrl());
+			socket.onopen = () => socket.send(JSON.stringify(payload));
+			socket.onmessage = (event) => {
+				const message = JSON.parse(event.data) as {
+					type: string;
+					payload: Record<string, unknown>;
+				};
+				if (message.type === "node_running") {
+					const nodeId = String(message.payload.node_id || "");
+					set({ nodes: applyStatus(get().nodes, nodeId, "RUNNING") });
+				}
+				if (message.type === "snapshot") {
+					const snapshot = message.payload as unknown as NodeSnapshot;
+					const failed =
+						snapshot.status === "FAILED" || snapshot.status === "error";
+					set({
+						snapshots: { ...get().snapshots, [snapshot.node_id]: snapshot },
+						nodes: applyStatus(
+							get().nodes,
+							snapshot.node_id,
+							failed ? "FAILED" : "COMPLETED",
+							{
+								durationMs: snapshot.duration_ms,
+								error: snapshot.error || null,
+							},
+						),
+					});
+				}
+				if (message.type === "completed" || message.type === "failed") {
+					const result = message.payload as unknown as ExecutionResult;
+					const snapshots: Record<string, NodeSnapshot> = {
+						...get().snapshots,
+					};
+					for (const snapshot of result.snapshots || []) {
+						snapshots[snapshot.node_id] = snapshot;
+					}
+					set({
+						lastExecution: result,
+						snapshots,
+						running: false,
+						error:
+							result.status === "FAILED" || result.status === "error"
+								? result.error || "Échec d'exécution"
+								: null,
+						nodes: get().nodes.map((node) => {
+							const snap = snapshots[node.id];
+							if (!snap) return node;
+							const failed =
+								snap.status === "FAILED" || snap.status === "error";
+							return {
+								...node,
+								data: {
+									...node.data,
+									status: failed ? "FAILED" : "COMPLETED",
+									durationMs: snap.duration_ms,
+									error: snap.error || null,
+								},
+							};
+						}),
+					});
+					finish();
+				}
+				if (message.type === "error") {
+					set({
+						running: false,
+						error: String(message.payload.error || "Erreur WebSocket"),
+					});
+					finish();
+				}
+			};
+			socket.onerror = () => {
+				set({ running: false, error: "Connexion WebSocket impossible." });
+				finish();
+			};
+			socket.onclose = () => {
+				if (get().running) {
+					set({ running: false });
+				}
+				finish();
+			};
+		} catch (err) {
+			set({
+				running: false,
+				error: err instanceof Error ? err.message : "Échec d'exécution",
+			});
+			finish();
+		}
+	});
+}

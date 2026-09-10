@@ -10,6 +10,7 @@ import {
 } from "../../lib/geo";
 import { useDagStore } from "../../store/dagStore";
 import { MapViewer } from "../MapViewer/MapViewer";
+import { JsonTree } from "./JsonTree";
 
 type DataPaneProps = {
 	title: string;
@@ -28,8 +29,8 @@ export function DataPane({
 }: DataPaneProps) {
 	const raster = asRasterPreview(data);
 	const ports = listPorts(data);
-	const [tab, setTab] = useState<"table" | "map" | "raster" | "fme">(
-		raster ? "raster" : "fme",
+	const [tab, setTab] = useState<"schema" | "table" | "map" | "raster" | "fme">(
+		raster ? "raster" : "schema",
 	);
 	const [port, setPort] = useState<string>("");
 	const [filter, setFilter] = useState("");
@@ -88,24 +89,31 @@ export function DataPane({
 				<div className="pane-tabs" role="tablist">
 					<button
 						type="button"
+						className={tab === "schema" ? "is-active" : ""}
+						onClick={() => setTab("schema")}
+					>
+						Schema
+					</button>
+					<button
+						type="button"
 						className={tab === "fme" ? "is-active" : ""}
 						onClick={() => setTab("fme")}
 					>
-						FME Data Inspector
+						FME
 					</button>
 					<button
 						type="button"
 						className={tab === "table" ? "is-active" : ""}
 						onClick={() => setTab("table")}
 					>
-						Tableau / JSON
+						Tableau
 					</button>
 					<button
 						type="button"
 						className={tab === "map" ? "is-active" : ""}
 						onClick={() => setTab("map")}
 					>
-						Carte SIG
+						Carte
 					</button>
 					<button
 						type="button"
@@ -118,6 +126,10 @@ export function DataPane({
 			</header>
 			{data == null ? (
 				<div className="empty">{empty}</div>
+			) : tab === "schema" ? (
+				<div className="json-tree">
+					<JsonTree data={stripBase64(scoped ?? data)} name="items" />
+				</div>
 			) : tab === "raster" ? (
 				raster ? (
 					<figure className="raster-preview">
