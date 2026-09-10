@@ -11,6 +11,7 @@ from app.nodes.readers import (
     IfcBimReaderNode,
     PostGISReader,
     RestWfsReaderNode,
+    ShapefileReader,
 )
 from app.nodes.transformers import (
     AreaOnAreaOverlayerNode,
@@ -51,6 +52,7 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
     for cls in (
         PostGISReader,
         FileReader,
+        ShapefileReader,
         GeoJSONReader,
         IfcBimReaderNode,
         DxfReaderNode,

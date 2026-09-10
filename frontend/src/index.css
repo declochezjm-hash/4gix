@@ -63,8 +63,41 @@ body {
 }
 .topbar__actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 0.6rem;
 	align-items: center;
+	justify-content: flex-end;
+	flex: 1;
+	min-width: 0;
+}
+.import-file-input {
+	display: none;
+}
+.import-file-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	flex-shrink: 0;
+	padding: 0.45rem 0.75rem;
+	background: #374151;
+	color: #fff;
+	border: 1px solid #4b5563;
+	border-radius: 6px;
+	font-size: 0.875rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease;
+}
+.import-file-btn:hover {
+	background: #4b5563;
+	border-color: #6b7280;
+}
+.import-file-btn__icon {
+	width: 1rem;
+	height: 1rem;
+	flex-shrink: 0;
 }
 .status {
 	font-size: 0.8rem;
@@ -127,6 +160,24 @@ body {
 	grid-template-columns: 1fr;
 	min-height: 0;
 	flex: 1;
+	position: relative;
+}
+.workspace--fmw-drop .workspace__main {
+	outline: 2px dashed var(--accent, #ff6d5a);
+	outline-offset: -4px;
+}
+.fmw-drop-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 30;
+	display: grid;
+	place-items: center;
+	pointer-events: none;
+	background: rgba(17, 17, 19, 0.55);
+	color: #f0f0f2;
+	font-size: 1.05rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
 }
 .workspace__main {
 	position: relative;
@@ -150,6 +201,18 @@ body {
 	background: #2b2b2f !important;
 	border-bottom-color: var(--line) !important;
 	fill: #ddd !important;
+}
+.react-flow__attribution {
+	background: rgba(20, 20, 22, 0.85) !important;
+	color: #909298 !important;
+	font-size: 10px !important;
+	padding: 2px 6px !important;
+	border-radius: 4px !important;
+	opacity: 1 !important;
+	visibility: visible !important;
+}
+.react-flow__attribution a {
+	color: #c4c6cc !important;
 }
 
 .canvas-plus {
@@ -748,6 +811,123 @@ tr.is-selected-feature {
 .pill--transformer {
 	color: #c4b5fd;
 }
+.n8n-node.is-disabled {
+	opacity: 0.45;
+	filter: grayscale(0.35);
+}
+
+.n8n-node-toolbar {
+	display: flex;
+	gap: 0.25rem;
+	background: #141416;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 0.2rem;
+	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.n8n-node-toolbar button {
+	width: 28px;
+	height: 28px;
+	border: 0;
+	border-radius: 6px;
+	background: #2b2b2f;
+	color: var(--ink);
+	cursor: pointer;
+}
+.n8n-node-toolbar button.is-off {
+	color: #ff6d5a;
+}
+
+.n8n-context-menu {
+	position: fixed;
+	z-index: 50;
+	min-width: 220px;
+	background: #2c2c30;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 0.35rem;
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+	display: grid;
+	gap: 0.15rem;
+}
+.n8n-context-menu button {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.75rem;
+	width: 100%;
+	border: 0;
+	background: transparent;
+	color: var(--ink);
+	padding: 0.45rem 0.55rem;
+	border-radius: 6px;
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.82rem;
+	text-align: left;
+}
+.n8n-context-menu button:hover {
+	background: #3a3b40;
+}
+.n8n-context-menu button.is-danger {
+	color: #ff8a80;
+}
+.n8n-context-menu kbd {
+	font-size: 0.65rem;
+	color: var(--muted);
+}
+
+.canvas-view-controls {
+	position: absolute;
+	right: 16px;
+	bottom: 16px;
+	z-index: 6;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.45rem;
+}
+.canvas-view-controls__tools {
+	display: flex;
+	gap: 0.25rem;
+	background: #141416;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 0.25rem;
+}
+.canvas-view-controls__tools button {
+	width: 30px;
+	height: 30px;
+	border: 0;
+	border-radius: 6px;
+	background: #2b2b2f;
+	color: var(--ink);
+	cursor: pointer;
+}
+.canvas-view-controls__tools button.is-active {
+	background: #ff6d5a;
+	color: #1a1a1a;
+}
+.canvas-minimap {
+	position: static !important;
+	width: 180px !important;
+	height: 120px !important;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	border: 0;
+}
+
 .pill--writer {
 	color: var(--writer);
 }

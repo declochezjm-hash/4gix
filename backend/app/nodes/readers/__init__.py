@@ -1,3 +1,4 @@
+from app.nodes.readers.shapefile_reader import ShapefileReader
 from app.nodes.readers.dxf_reader import DxfReaderNode
 from app.nodes.readers.file_reader import FileReader
 from app.nodes.readers.geojson_reader import GeoJSONReader
@@ -14,4 +15,5 @@ __all__ = [
     "DxfReaderNode",
     "GeoTiffRasterReaderNode",
     "RestWfsReaderNode",
+    "ShapefileReader",
 ]

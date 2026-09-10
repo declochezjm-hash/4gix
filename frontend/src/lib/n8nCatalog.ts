@@ -67,6 +67,7 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	postgis_writer: "io",
 	geojson_reader: "io",
 	file_reader: "io",
+	shapefile_reader: "io",
 	file_writer: "io",
 	log_writer: "io",
 	rest_wfs_reader: "io",

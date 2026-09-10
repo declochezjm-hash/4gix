@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     postgis_password: str = "4gix_password"
     postgis_db: str = "4gix_db"
     workspace_dir: str = "/workspace"
+    fme_executable: str = ""
 
     @field_validator("cors_origins", mode="before")
     @classmethod

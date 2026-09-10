@@ -4,6 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.execution import router as execution_router
+from app.api.shapefile_import import router as shapefile_import_router
+from app.api.v1.router import router as api_v1_router
+from app.api.fme_workflows import router as fme_workflows_router
 from app.api.nodes_catalog import router as catalog_router
 from app.api.workflows import router as workflows_router
 from app.core.config import settings
@@ -36,6 +39,9 @@ app.add_middleware(
 app.include_router(execution_router)
 app.include_router(catalog_router)
 app.include_router(workflows_router)
+app.include_router(fme_workflows_router)
+app.include_router(shapefile_import_router)
+app.include_router(api_v1_router)
 
 
 @app.get("/health")

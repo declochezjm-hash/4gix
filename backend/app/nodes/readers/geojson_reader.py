@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
+from app.core.paths import resolve_workspace_path
 from app.nodes.base import Base4GIxNode, _as_feature_collection
 
 
@@ -125,6 +126,11 @@ class GeoJSONReader(Base4GIxNode):
                     "enumNames": ["Villes (points)", "Régions (polygones)", "Démo FME (polygones + invalides)"],
                     "default": "cities",
                 },
+                "path": {
+                    "type": "string",
+                    "title": "Fichier GeoJSON",
+                    "description": "Chemin dans /workspace (import drag-and-drop).",
+                },
                 "geojson": {
                     "type": "string",
                     "title": "GeoJSON",
@@ -141,10 +147,16 @@ class GeoJSONReader(Base4GIxNode):
         }
 
     def execute(self, inputs: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
+        file_path = (params.get("path") or "").strip()
         raw = (params.get("geojson") or "").strip()
         use_sample = params.get("use_sample", True)
         sample_set = params.get("sample_set") or "cities"
-        if raw:
+        if file_path:
+            path = resolve_workspace_path(file_path)
+            if not path.is_file():
+                raise FileNotFoundError(f"GeoJSON introuvable: {path}")
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        elif raw:
             parsed = json.loads(raw) if isinstance(raw, str) else raw
         elif use_sample:
             if sample_set == "regions":
@@ -166,12 +178,12 @@ class GeoJSONReader(Base4GIxNode):
                 if key not in columns:
                     columns.append(key)
 
-        return {
-            "data": fc,
-            "metadata": {
-                "source": "geojson",
-                "feature_count": len(fc.get("features") or []),
-                "columns": columns,
-                "crs": "EPSG:4326",
-            },
+        metadata: Dict[str, Any] = {
+            "source": "geojson",
+            "feature_count": len(fc.get("features") or []),
+            "columns": columns,
+            "crs": "EPSG:4326",
         }
+        if file_path:
+            metadata["path"] = str(resolve_workspace_path(file_path))
+        return {"data": fc, "metadata": metadata}

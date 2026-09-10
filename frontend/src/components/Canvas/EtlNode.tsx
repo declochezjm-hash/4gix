@@ -2,6 +2,7 @@ import { Handle, type NodeProps, Position } from "@xyflow/react";
 import type { FlowNodeData } from "../../lib/api";
 import { nodeChrome } from "../../lib/n8nCatalog";
 import { useDagStore } from "../../store/dagStore";
+import { NodeActionBar } from "./NodeActionBar";
 
 const HANDLE_LABEL: Record<string, string> = {
 	input: "Input",
@@ -41,6 +42,7 @@ function labelOf(handleId: string): string {
 }
 
 function statusLabel(payload: FlowNodeData): string {
+	if (payload.disabled) return "Deactivated";
 	const status = payload.status || "idle";
 	if (status === "RUNNING" || status === "running") return "Running…";
 	if (status === "FAILED" || status === "error")
@@ -72,57 +74,60 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 	const rows = Math.max(inHandles.length, outHandles.length, 1);
 
 	return (
-		<div
-			className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""}`}
-			style={{ minHeight: 88 + Math.max(0, rows - 1) * 18 }}
-		>
-			{inHandles.map((handleId, index) => (
-				<Handle
-					key={`in-${handleId}`}
-					type="target"
-					position={Position.Left}
-					id={handleId}
-					className="n8n-handle"
-					style={{ top: `${((index + 1) / (inHandles.length + 1)) * 100}%` }}
-				>
-					<span className="n8n-handle__tip n8n-handle__tip--in">
-						{labelOf(handleId)}
-					</span>
-				</Handle>
-			))}
-			<div className="n8n-node__icon" style={{ background: chrome.color }}>
-				{chrome.glyph}
-			</div>
-			<strong className="n8n-node__label">{payload.label}</strong>
-			<span className="n8n-node__sub">{statusLabel(payload)}</span>
-			<button
-				type="button"
-				className="n8n-node__plus"
-				title="Ajouter un nœud"
-				onClick={(event) => {
-					event.stopPropagation();
-					openNodePanel({
-						nodeId: id,
-						handleId: outHandles[0] || "output",
-					});
-				}}
+		<>
+			<NodeActionBar nodeId={id} visible={Boolean(selected)} />
+			<div
+				className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""} ${payload.disabled ? "is-disabled" : ""}`}
+				style={{ minHeight: 88 + Math.max(0, rows - 1) * 18 }}
 			>
-				+
-			</button>
-			{outHandles.map((handleId, index) => (
-				<Handle
-					key={`out-${handleId}`}
-					type="source"
-					position={Position.Right}
-					id={handleId}
-					className="n8n-handle"
-					style={{ top: `${((index + 1) / (outHandles.length + 1)) * 100}%` }}
+				{inHandles.map((handleId, index) => (
+					<Handle
+						key={`in-${handleId}`}
+						type="target"
+						position={Position.Left}
+						id={handleId}
+						className="n8n-handle"
+						style={{ top: `${((index + 1) / (inHandles.length + 1)) * 100}%` }}
+					>
+						<span className="n8n-handle__tip n8n-handle__tip--in">
+							{labelOf(handleId)}
+						</span>
+					</Handle>
+				))}
+				<div className="n8n-node__icon" style={{ background: chrome.color }}>
+					{chrome.glyph}
+				</div>
+				<strong className="n8n-node__label">{payload.label}</strong>
+				<span className="n8n-node__sub">{statusLabel(payload)}</span>
+				<button
+					type="button"
+					className="n8n-node__plus"
+					title="Ajouter un nœud"
+					onClick={(event) => {
+						event.stopPropagation();
+						openNodePanel({
+							nodeId: id,
+							handleId: outHandles[0] || "output",
+						});
+					}}
 				>
-					<span className="n8n-handle__tip n8n-handle__tip--out">
-						{labelOf(handleId)}
-					</span>
-				</Handle>
-			))}
-		</div>
+					+
+				</button>
+				{outHandles.map((handleId, index) => (
+					<Handle
+						key={`out-${handleId}`}
+						type="source"
+						position={Position.Right}
+						id={handleId}
+						className="n8n-handle"
+						style={{ top: `${((index + 1) / (outHandles.length + 1)) * 100}%` }}
+					>
+						<span className="n8n-handle__tip n8n-handle__tip--out">
+							{labelOf(handleId)}
+						</span>
+					</Handle>
+				))}
+			</div>
+		</>
 	);
 }

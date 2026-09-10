@@ -14,6 +14,7 @@ import {
 	type CatalogNode,
 	type ExecutionResult,
 	type FlowNodeData,
+	type FmwImportResult,
 	fetchCatalog,
 	fetchNodeSnapshot,
 	fetchWorkflows,
@@ -22,6 +23,14 @@ import {
 	saveWorkflow,
 	type WorkflowRecord,
 	wsExecuteUrl,
+	importFmwFile,
+	downloadExportFmw,
+	isFmwFilename,
+	isShapefileZipFilename,
+	isSpatialDataFilename,
+	uploadDataFile,
+	type DataUploadResult,
+	zipLooksLikeShapefile,
 } from "../lib/api";
 
 type NodeStatus = NonNullable<FlowNodeData["status"]>;
@@ -29,6 +38,12 @@ type NodeStatus = NonNullable<FlowNodeData["status"]>;
 export type PendingConnect = {
 	nodeId: string;
 	handleId: string;
+};
+
+export type ContextMenuState = {
+	nodeId: string;
+	x: number;
+	y: number;
 };
 
 type DagState = {
@@ -43,9 +58,13 @@ type DagState = {
 	lastExecution: ExecutionResult | null;
 	running: boolean;
 	error: string | null;
+	importNotice: string | null;
 	inspectorOpen: boolean;
 	nodePanelOpen: boolean;
 	pendingConnect: PendingConnect | null;
+	contextMenu: ContextMenuState | null;
+	nodeClipboard: Node<FlowNodeData> | null;
+	canvasLocked: boolean;
 	mapView: MapViewState | null;
 	onNodesChange: (changes: NodeChange<Node<FlowNodeData>>[]) => void;
 	onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
@@ -70,6 +89,28 @@ type DagState = {
 	runDag: () => Promise<void>;
 	runSelectedNode: () => Promise<void>;
 	closeInspector: () => void;
+	openContextMenu: (menu: ContextMenuState) => void;
+	closeContextMenu: () => void;
+	deleteNode: (id: string) => void;
+	duplicateNode: (id: string) => void;
+	copyNode: (id: string) => void;
+	pasteNode: () => void;
+	toggleNodeDisabled: (id: string) => void;
+	renameSelectedNode: (id: string) => void;
+	tidyUpWorkflow: () => void;
+	loadImportedDefinition: (payload: FmwImportResult) => void;
+	importFmwFromFile: (file: File) => Promise<void>;
+	importLocalWorkflowFile: (file: File) => Promise<void>;
+	importShapefileZipFromFile: (
+		file: File,
+		position?: { x: number; y: number },
+	) => Promise<void>;
+	importDataFileFromDrop: (
+		file: File,
+		position?: { x: number; y: number },
+	) => Promise<void>;
+	exportCurrentFmw: () => Promise<void>;
+	setCanvasLocked: (locked: boolean) => void;
 };
 
 function schemaDefaults(entry: CatalogNode): Record<string, unknown> {
@@ -105,6 +146,47 @@ function graphPayload(
 			targetHandle: edge.targetHandle,
 		})),
 	};
+}
+
+function activeNodes(nodes: Node<FlowNodeData>[]) {
+	return nodes.filter((node) => !node.data.disabled);
+}
+
+function activeEdges(edges: Edge[], nodes: Node<FlowNodeData>[]) {
+	const activeIds = new Set(activeNodes(nodes).map((node) => node.id));
+	return edges.filter(
+		(edge) => activeIds.has(edge.source) && activeIds.has(edge.target),
+	);
+}
+
+function topologicalLayers(nodes: Node<FlowNodeData>[], edges: Edge[]): Map<string, number> {
+	const ids = new Set(nodes.map((node) => node.id));
+	const incoming = new Map<string, string[]>();
+	for (const id of ids) incoming.set(id, []);
+	for (const edge of edges) {
+		if (!ids.has(edge.source) || !ids.has(edge.target)) continue;
+		incoming.get(edge.target)?.push(edge.source);
+	}
+	const layer = new Map<string, number>();
+	const queue = [...ids].filter((id) => (incoming.get(id) || []).length === 0);
+	for (const id of queue) layer.set(id, 0);
+	let head = 0;
+	while (head < queue.length) {
+		const current = queue[head++];
+		const nextLayer = (layer.get(current) || 0) + 1;
+		for (const edge of edges) {
+			if (edge.source !== current || !ids.has(edge.target)) continue;
+			const prev = layer.get(edge.target);
+			if (prev == null || nextLayer > prev) {
+				layer.set(edge.target, nextLayer);
+				queue.push(edge.target);
+			}
+		}
+	}
+	for (const id of ids) {
+		if (!layer.has(id)) layer.set(id, 0);
+	}
+	return layer;
 }
 
 function applyStatus(
@@ -156,6 +238,7 @@ function buildNode(entry: CatalogNode, position: { x: number; y: number }) {
 			outputHandles: entry.output_handles || ["output"],
 			fmeGroup: entry.fme_group || "",
 			notes: "",
+			disabled: false,
 		},
 	};
 	return node;
@@ -175,9 +258,13 @@ export const useDagStore = create<DagState>((set, get) => ({
 	lastExecution: null,
 	running: false,
 	error: null,
+	importNotice: null,
 	inspectorOpen: false,
 	nodePanelOpen: false,
 	pendingConnect: null,
+	contextMenu: null,
+	nodeClipboard: null,
+	canvasLocked: false,
 	mapView: null,
 
 	onNodesChange: (changes) =>
@@ -414,6 +501,332 @@ export const useDagStore = create<DagState>((set, get) => ({
 			),
 		);
 	},
+
+	openContextMenu: (menu) =>
+		set({ contextMenu: menu, selectedNodeId: menu.nodeId }),
+	closeContextMenu: () => set({ contextMenu: null }),
+
+	deleteNode: (id) =>
+		set({
+			nodes: get().nodes.filter((node) => node.id !== id),
+			edges: get().edges.filter(
+				(edge) => edge.source !== id && edge.target !== id,
+			),
+			selectedNodeId:
+				get().selectedNodeId === id ? null : get().selectedNodeId,
+			contextMenu: null,
+		}),
+
+	duplicateNode: (id) => {
+		const source = get().nodes.find((node) => node.id === id);
+		if (!source) return;
+		const copy: Node<FlowNodeData> = {
+			...source,
+			id: `${source.data.nodeType}-${nodeSeq++}`,
+			position: {
+				x: source.position.x + 40,
+				y: source.position.y + 40,
+			},
+			data: {
+				...source.data,
+				status: "idle",
+				durationMs: undefined,
+				error: null,
+			},
+		};
+		set({
+			nodes: [...get().nodes, copy],
+			selectedNodeId: copy.id,
+			contextMenu: null,
+		});
+	},
+
+	copyNode: (id) => {
+		const source = get().nodes.find((node) => node.id === id);
+		if (!source) return;
+		set({
+			nodeClipboard: JSON.parse(JSON.stringify(source)) as Node<FlowNodeData>,
+			contextMenu: null,
+		});
+	},
+
+	pasteNode: () => {
+		const clip = get().nodeClipboard;
+		if (!clip) return;
+		const copy: Node<FlowNodeData> = {
+			...clip,
+			id: `${clip.data.nodeType}-${nodeSeq++}`,
+			position: {
+				x: (clip.position?.x || 0) + 60,
+				y: (clip.position?.y || 0) + 60,
+			},
+			data: {
+				...clip.data,
+				status: "idle",
+				durationMs: undefined,
+				error: null,
+			},
+		};
+		set({ nodes: [...get().nodes, copy], selectedNodeId: copy.id });
+	},
+
+	toggleNodeDisabled: (id) =>
+		set({
+			nodes: get().nodes.map((node) =>
+				node.id === id
+					? { ...node, data: { ...node.data, disabled: !node.data.disabled } }
+					: node,
+			),
+			contextMenu: null,
+		}),
+
+	renameSelectedNode: (id) => {
+		const node = get().nodes.find((item) => item.id === id);
+		if (!node) return;
+		const next = window.prompt("Renommer le nœud", node.data.label);
+		if (!next?.trim()) return;
+		set({
+			nodes: get().nodes.map((item) =>
+				item.id === id
+					? { ...item, data: { ...item.data, label: next.trim() } }
+					: item,
+			),
+			contextMenu: null,
+		});
+	},
+
+	tidyUpWorkflow: () => {
+		const { nodes, edges } = get();
+		if (!nodes.length) return;
+		const layers = topologicalLayers(nodes, edges);
+		const byLayer = new Map<number, Node<FlowNodeData>[]>();
+		for (const node of nodes) {
+			const layer = layers.get(node.id) || 0;
+			const list = byLayer.get(layer) || [];
+			list.push(node);
+			byLayer.set(layer, list);
+		}
+		const positioned = nodes.map((node) => {
+			const layer = layers.get(node.id) || 0;
+			const peers = byLayer.get(layer) || [];
+			const index = peers.findIndex((peer) => peer.id === node.id);
+			return {
+				...node,
+				position: { x: 80 + layer * 260, y: 80 + index * 130 },
+			};
+		});
+		set({ nodes: positioned, contextMenu: null });
+	},
+
+	loadImportedDefinition: (payload) => {
+		const catalog = get().catalog;
+		const nodes = (payload.definition.nodes || []).map((raw) => {
+			const node = raw as Node<FlowNodeData>;
+			const entry = catalog.find(
+				(item) => item.node_type === node.data?.nodeType,
+			);
+			return {
+				...node,
+				type: "etl",
+				data: {
+					...node.data,
+					params: {
+						...(entry ? schemaDefaults(entry) : {}),
+						...(node.data?.params || {}),
+					},
+					schema: node.data?.schema || entry?.schema,
+					inputHandles:
+						node.data?.inputHandles || entry?.input_handles || ["input"],
+					outputHandles:
+						node.data?.outputHandles || entry?.output_handles || ["output"],
+					status: "idle" as const,
+					disabled: false,
+				},
+			};
+		});
+		set({
+			nodes,
+			edges: (payload.definition.edges || []) as Edge[],
+			workflowName: payload.name,
+			workflowId: null,
+			snapshots: {},
+			lastExecution: null,
+			selectedNodeId: null,
+			inspectorOpen: false,
+			nodePanelOpen: false,
+			error: null,
+			importNotice:
+				payload.warnings?.length > 0
+					? `Import FME : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) · ${payload.warnings[0]}`
+					: `Import FME : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) chargés.`,
+		});
+	},
+
+	importFmwFromFile: async (file: File) => {
+		if (!isFmwFilename(file.name)) {
+			set({ error: "Fichier attendu: .fmw ou .fmwt" });
+			return;
+		}
+		try {
+			const payload = await importFmwFile(file);
+			get().loadImportedDefinition(payload);
+		} catch (err) {
+			set({
+				error: err instanceof Error ? err.message : "Import FME impossible.",
+				importNotice: null,
+			});
+		}
+	},
+
+	importLocalWorkflowFile: async (file: File) => {
+		const lower = file.name.toLowerCase();
+		if (isFmwFilename(file.name)) {
+			await get().importFmwFromFile(file);
+			return;
+		}
+		if (isSpatialDataFilename(file.name)) {
+			await get().importDataFileFromDrop(file);
+			return;
+		}
+		if (
+			!lower.endsWith(".json") &&
+			!lower.endsWith(".4gix.json")
+		) {
+			set({ error: "Formats acceptés: .fmw, .fmwt, .json, .zip (Shapefile), .geojson, .tif" });
+			return;
+		}
+		try {
+			const raw = JSON.parse(await file.text()) as {
+				name?: string;
+				nodes?: unknown[];
+				edges?: unknown[];
+				definition?: { nodes?: unknown[]; edges?: unknown[] };
+			};
+			const payload: FmwImportResult = {
+				name: raw.name || file.name.replace(/\.[^.]+$/, ""),
+				format: "4gix_dag",
+				source: "json_file",
+				warnings: [],
+				definition: {
+					nodes: raw.definition?.nodes ?? raw.nodes ?? [],
+					edges: raw.definition?.edges ?? raw.edges ?? [],
+				},
+			};
+			if (!payload.definition.nodes.length) {
+				set({ error: "JSON invalide: aucun nœud trouvé." });
+				return;
+			}
+			get().loadImportedDefinition(payload);
+		} catch (err) {
+			set({
+				error:
+					err instanceof Error ? err.message : "Import JSON impossible.",
+			});
+		}
+	},
+
+	importDataFileFromDrop: async (file, position) => {
+		if (!isSpatialDataFilename(file.name)) {
+			set({
+				error:
+					"Formats de données acceptés : .zip (Shapefile), .geojson, .tif / .tiff.",
+			});
+			return;
+		}
+		if (isShapefileZipFilename(file.name)) {
+			const looksLike = await zipLooksLikeShapefile(file);
+			if (!looksLike) {
+				set({
+					error:
+						"Ce .zip ne semble pas contenir de Shapefile (.shp, .shx, .dbf).",
+				});
+				return;
+			}
+		}
+		try {
+			const payload: DataUploadResult = await uploadDataFile(file);
+			const suggested = payload.suggested_node;
+			if (!suggested?.node_type) {
+				throw new Error("Réponse serveur incomplète (suggested_node manquant).");
+			}
+			const entry = get().catalog.find(
+				(item) => item.node_type === suggested.node_type,
+			);
+			if (!entry) {
+				set({
+					error: `Nœud ${suggested.node_type} absent du catalogue.`,
+				});
+				return;
+			}
+			const pos =
+				position ||
+				({
+					x: 120 + (get().nodes.length % 5) * 48,
+					y: 80 + get().nodes.length * 24,
+				} as const);
+			const node = buildNode(entry, pos);
+			node.data.label = suggested.label || entry.label;
+			node.data.params = {
+				...node.data.params,
+				...suggested.params,
+			};
+			const typeLabels: Record<string, string> = {
+				shapefile: "Shapefile",
+				geojson: "GeoJSON",
+				geotiff: "GeoTIFF",
+			};
+			const kind =
+				typeLabels[payload.detected_type] || payload.detected_type;
+			set({
+				nodes: [...get().nodes, node],
+				selectedNodeId: node.id,
+				inspectorOpen: true,
+				nodePanelOpen: false,
+				error: null,
+				importNotice: `${kind} · ${file.name}`,
+			});
+		} catch (err) {
+			set({
+				error:
+					err instanceof Error
+						? err.message
+						: "Import de données impossible.",
+				importNotice: null,
+			});
+		}
+	},
+
+	importShapefileZipFromFile: async (file, position) => {
+		await get().importDataFileFromDrop(file, position);
+	},
+
+	exportCurrentFmw: async () => {
+		const state = get();
+		if (!state.nodes.length) {
+			set({ error: "Aucun nœud à exporter." });
+			return;
+		}
+		await get().saveCurrentWorkflow();
+		const workflowId = get().workflowId;
+		if (!workflowId) {
+			set({ error: "Enregistrez le workflow avant l'export FME." });
+			return;
+		}
+		try {
+			const base = (get().workflowName || "workflow").replace(
+				/[<>:"/\\|?*]+/g,
+				"_",
+			);
+			await downloadExportFmw(workflowId, base);
+			set({ error: null });
+		} catch (err) {
+			set({
+				error: err instanceof Error ? err.message : "Export FME impossible.",
+			});
+		}
+	},
+
+	setCanvasLocked: (locked) => set({ canvasLocked: locked }),
 }));
 
 async function executeViaSocket(
@@ -423,8 +836,10 @@ async function executeViaSocket(
 	subsetEdges?: Edge[],
 ) {
 	const { workflowId, workflowName } = get();
-	const nodes = subsetNodes || get().nodes;
-	const edges = subsetEdges || get().edges;
+	const baseNodes = subsetNodes || get().nodes;
+	const baseEdges = subsetEdges || get().edges;
+	const nodes = activeNodes(baseNodes);
+	const edges = activeEdges(baseEdges, baseNodes);
 	const targetIds = new Set(nodes.map((node) => node.id));
 	set({
 		running: true,

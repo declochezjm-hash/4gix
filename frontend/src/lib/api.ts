@@ -94,6 +94,7 @@ export type FlowNodeData = {
 	outputHandles?: string[];
 	fmeGroup?: string;
 	notes?: string;
+	disabled?: boolean;
 };
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -189,4 +190,212 @@ export async function fetchNodeSnapshot(
 
 export function healthUrl(): string {
 	return `${API_BASE}/health`;
+}
+
+export type FmwImportResult = {
+	name: string;
+	format: string;
+	source: string;
+	filename?: string;
+	warnings: string[];
+	definition: {
+		nodes: unknown[];
+		edges: unknown[];
+	};
+};
+
+export type DataUploadResult = {
+	filename: string;
+	filepath: string;
+	workspace_path?: string;
+	detected_type: "shapefile" | "geojson" | "geotiff";
+	suggested_node?: {
+		node_type: string;
+		label: string;
+		params: Record<string, unknown>;
+	};
+};
+
+export type ShapefileZipImportResult = {
+	format: string;
+	source: string;
+	filename: string;
+	label: string;
+	geojson: Record<string, unknown>;
+	metadata: Record<string, unknown>;
+	suggested_node: {
+		node_type: string;
+		label: string;
+		params: Record<string, unknown>;
+	};
+	validation?: {
+		shapefile_sets: number;
+		components_detected: string[];
+	};
+};
+
+export function formatApiErrorDetail(payload: unknown, fallback: string): string {
+	if (!payload || typeof payload !== "object") return fallback;
+	const detail = (payload as { detail?: unknown }).detail;
+	if (typeof detail === "string") return detail;
+	if (Array.isArray(detail)) {
+		return detail
+			.map((item) =>
+				typeof item === "object" && item && "msg" in item
+					? String((item as { msg: string }).msg)
+					: String(item),
+			)
+			.join(" ");
+	}
+	return fallback;
+}
+
+export type FmeEngineRunResult = {
+	status: string;
+	exit_code: number;
+	log: string;
+	name?: string;
+	source?: string;
+};
+
+export async function executeFmwFile(file: File): Promise<FmeEngineRunResult> {
+	const body = new FormData();
+	body.append("file", file);
+	const response = await fetch(`${API_BASE}/api/v1/workflows/execute-fmw`, {
+		method: "POST",
+		body,
+	});
+	const payload = await response.json();
+	if (!response.ok) {
+		throw new Error(formatApiErrorDetail(payload, "Exécution FME impossible."));
+	}
+	return payload as FmeEngineRunResult;
+}
+
+export async function importFmwFile(file: File): Promise<FmwImportResult> {
+	const body = new FormData();
+	body.append("file", file);
+	const response = await fetch(`${API_BASE}/api/v1/workflows/import-fmw`, {
+		method: "POST",
+		body,
+	});
+	const payload = await response.json();
+	if (!response.ok) {
+		throw new Error(
+			formatApiErrorDetail(payload, "Import FME impossible."),
+		);
+	}
+	return payload;
+}
+
+export function isShapefileZipFilename(name: string): boolean {
+	return name.toLowerCase().endsWith(".zip");
+}
+
+export function isGeoJsonDataFilename(name: string): boolean {
+	return name.toLowerCase().endsWith(".geojson");
+}
+
+export function isGeoTiffDataFilename(name: string): boolean {
+	const lower = name.toLowerCase();
+	return (
+		lower.endsWith(".tif") ||
+		lower.endsWith(".tiff") ||
+		lower.endsWith(".geotiff")
+	);
+}
+
+export function isSpatialDataFilename(name: string): boolean {
+	return (
+		isShapefileZipFilename(name) ||
+		isGeoJsonDataFilename(name) ||
+		isGeoTiffDataFilename(name)
+	);
+}
+
+export async function uploadDataFile(file: File): Promise<DataUploadResult> {
+	const body = new FormData();
+	body.append("file", file);
+	const response = await fetch(`${API_BASE}/api/v1/upload`, {
+		method: "POST",
+		body,
+	});
+	const payload = await response.json();
+	if (!response.ok) {
+		throw new Error(
+			formatApiErrorDetail(payload, "Téléversement de données impossible."),
+		);
+	}
+	return payload as DataUploadResult;
+}
+
+/** Détection légère côté navigateur (signature PK + présence .shp/.dbf/.shx dans les noms). */
+export async function zipLooksLikeShapefile(file: File): Promise<boolean> {
+	if (!isShapefileZipFilename(file.name)) return false;
+	const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+	if (head[0] !== 0x50 || head[1] !== 0x4b) return false;
+	try {
+		const buffer = await file.arrayBuffer();
+		const text = new TextDecoder("latin1").decode(buffer);
+		const lower = text.toLowerCase();
+		return lower.includes(".shp") && lower.includes(".dbf") && lower.includes(".shx");
+	} catch {
+		return true;
+	}
+}
+
+export async function importShapefileZip(
+	file: File,
+): Promise<ShapefileZipImportResult> {
+	const body = new FormData();
+	body.append("file", file);
+	const response = await fetch(
+		`${API_BASE}/api/v1/datasets/import-shapefile-zip`,
+		{
+			method: "POST",
+			body,
+		},
+	);
+	const payload = await response.json();
+	if (!response.ok) {
+		throw new Error(
+			formatApiErrorDetail(payload, "Import Shapefile (.zip) impossible."),
+		);
+	}
+	return payload as ShapefileZipImportResult;
+}
+
+export function exportFmwUrl(workflowId: string): string {
+	return `${API_BASE}/api/v1/workflows/${workflowId}/export-fmw`;
+}
+
+export function isFmwFilename(name: string): boolean {
+	const lower = name.toLowerCase();
+	return lower.endsWith(".fmw") || lower.endsWith(".fmwt");
+}
+
+export async function downloadExportFmw(
+	workflowId: string,
+	filename: string,
+): Promise<void> {
+	const response = await fetch(exportFmwUrl(workflowId));
+	if (!response.ok) {
+		let detail = "Export FME impossible.";
+		try {
+			const payload = (await response.json()) as { detail?: string };
+			if (payload.detail) detail = payload.detail;
+		} catch {
+			/* ignore */
+		}
+		throw new Error(detail);
+	}
+	const blob = await response.blob();
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename.toLowerCase().endsWith(".fmw")
+		? filename
+		: `${filename}.fmw`;
+	anchor.click();
+	URL.revokeObjectURL(url);
 }
