@@ -15,6 +15,8 @@ class Base4GIxNode(ABC):
     label: str = ""
     description: str = ""
     input_handles: List[str] = ["input"]
+    output_handles: List[str] = ["output"]
+    fme_group: str = ""
 
     @classmethod
     @abstractmethod
@@ -42,6 +44,8 @@ class Base4GIxNode(ABC):
             "description": cls.description or schema.get("description") or "",
             "schema": schema,
             "input_handles": list(cls.input_handles or ["input"]),
+            "output_handles": list(cls.output_handles or ["output"]),
+            "fme_group": cls.fme_group or "",
         }
 
 
@@ -193,6 +197,22 @@ def build_snapshot_from_payload(
             output_snapshot=preview,
         ).to_dict()
 
+    if isinstance(payload, dict) and payload.get("ports"):
+        from app.nodes.fme_features import port_previews
+
+        previews = port_previews(payload)
+        metadata.setdefault("fme_ports", True)
+        primary = previews.get("output") or (fc and _preview_limit(fc))
+        return NodeSnapshot(
+            node_id=node_id,
+            node_type=node_type,
+            status="success",
+            duration_ms=duration_ms,
+            metadata=metadata,
+            preview=primary,
+            output_snapshot={"ports": previews, "data": payload.get("data")},
+        ).to_dict()
+
     if fc is not None:
         metadata.setdefault("feature_count", len(fc.get("features") or []))
         metadata.setdefault("geometry_types", _geometry_types(fc))
@@ -240,8 +260,13 @@ def unwrap_named_input(inputs: Dict[str, Any], handle: str) -> Any:
     if handle in inputs:
         return unwrap_handle(inputs[handle])
     aliases = {
-        "input_a": ["a", "left", "input"],
-        "input_b": ["b", "right"],
+        "input_a": ["a", "left", "input", "request", "base"],
+        "input_b": ["b", "right", "supplier", "candidates", "clipper"],
+        "clipper": ["mask", "clip", "input_b"],
+        "request": ["input", "input_a", "left"],
+        "supplier": ["input_b", "right"],
+        "base": ["input", "request", "input_a"],
+        "candidates": ["supplier", "input_b"],
     }
     for alias in aliases.get(handle, []):
         if alias in inputs:

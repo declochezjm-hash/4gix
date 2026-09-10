@@ -1,4 +1,4 @@
-"""Jeux d'exemple BIM / CAD / Raster et workflow de démonstration Phase 3."""
+"""Jeux d'exemple BIM / CAD / Raster / FME et workflows de démonstration."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ def bootstrap_samples() -> dict:
     ifc_path = samples / "sample.ifc"
     dxf_path = samples / "sample.dxf"
     tif_path = samples / "sample_dem.tif"
+    fme_path = samples / "fme_demo.geojson"
     errors: list[str] = []
     if not ifc_path.exists():
         try:
@@ -30,12 +31,20 @@ def bootstrap_samples() -> dict:
             _write_sample_dem(tif_path)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"dem:{exc}")
+    if not fme_path.exists():
+        try:
+            _write_fme_demo(fme_path)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"fme:{exc}")
     workflow_id = _seed_demo_workflow()
+    fme_workflow_id = _seed_fme_workflow()
     return {
         "ifc": str(ifc_path) if ifc_path.exists() else None,
         "dxf": str(dxf_path) if dxf_path.exists() else None,
         "dem": str(tif_path) if tif_path.exists() else None,
+        "fme_demo": str(fme_path) if fme_path.exists() else None,
         "workflow_id": workflow_id,
+        "fme_workflow_id": fme_workflow_id,
         "errors": errors,
     }
 
@@ -154,6 +163,14 @@ def _write_sample_ifc_api(path: Path) -> None:
     model.write(str(path))
 
 
+def _write_fme_demo(path: Path) -> None:
+    import json
+
+    from app.nodes.readers.geojson_reader import SAMPLE_FME_DEMO
+
+    path.write_text(json.dumps(SAMPLE_FME_DEMO, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _seed_demo_workflow() -> str | None:
     try:
         from app.core import persistence
@@ -241,6 +258,190 @@ def _demo_definition() -> dict:
             {
                 "id": "e-reproject-pg",
                 "source": "reproject-1",
+                "target": "postgis_writer-1",
+                "sourceHandle": "output",
+                "targetHandle": "input",
+                "animated": True,
+            },
+        ],
+    }
+
+
+def _seed_fme_workflow() -> str | None:
+    try:
+        from app.core import persistence
+    except Exception:
+        return None
+    try:
+        existing = persistence.list_workflows()
+        for item in existing:
+            if item.get("name") == "FME : Validator → Tester → Dissolver → PostGIS":
+                return item.get("id")
+        saved = persistence.upsert_workflow(
+            name="FME : Validator → Tester → Dissolver → PostGIS",
+            definition=_fme_demo_definition(),
+        )
+        return saved.get("id")
+    except Exception:
+        return None
+
+
+def _node(
+    node_id: str,
+    node_type: str,
+    label: str,
+    category: str,
+    x: int,
+    y: int,
+    params: dict,
+    *,
+    spatial: bool = True,
+    inputs: list[str] | None = None,
+    outputs: list[str] | None = None,
+) -> dict:
+    return {
+        "id": node_id,
+        "type": "etl",
+        "position": {"x": x, "y": y},
+        "data": {
+            "label": label,
+            "nodeType": node_type,
+            "category": category,
+            "isSpatial": spatial,
+            "params": params,
+            "status": "idle",
+            "inputHandles": inputs or ["input"],
+            "outputHandles": outputs or ["output"],
+        },
+    }
+
+
+def _fme_demo_definition() -> dict:
+    return {
+        "nodes": [
+            _node(
+                "geojson_reader-1",
+                "geojson_reader",
+                "GeoJSON Reader",
+                "Reader",
+                40,
+                160,
+                {"sample_set": "fme_demo", "use_sample": True, "geojson": ""},
+            ),
+            _node(
+                "geometry_validator-1",
+                "geometry_validator",
+                "GeometryValidator",
+                "Transformer",
+                300,
+                160,
+                {"repair": True, "allow_empty": False},
+                outputs=["output", "rejected"],
+            ),
+            _node(
+                "log_writer-1",
+                "log_writer",
+                "Log Writer",
+                "Writer",
+                560,
+                320,
+                {"filename": "rejected.json", "label": "REJECTED"},
+                spatial=False,
+            ),
+            _node(
+                "tester-1",
+                "tester",
+                "Tester",
+                "Transformer",
+                560,
+                80,
+                {
+                    "logic": "AND",
+                    "clauses": '[{"attr":"category","op":"eq","value":"urban"}]',
+                },
+                spatial=False,
+                outputs=["passed", "failed"],
+            ),
+            _node(
+                "attribute_manager-1",
+                "attribute_manager",
+                "AttributeManager",
+                "Transformer",
+                820,
+                80,
+                {
+                    "operations": '[{"op":"rename","from":"name","to":"nom"},{"op":"create","name":"source","expr":"\'fme_demo\'"}]',
+                },
+                spatial=False,
+            ),
+            _node(
+                "dissolver-1",
+                "dissolver",
+                "Dissolver",
+                "Transformer",
+                1080,
+                80,
+                {"group_by": "group"},
+            ),
+            _node(
+                "postgis_writer-1",
+                "postgis_writer",
+                "PostGIS Writer",
+                "Writer",
+                1340,
+                80,
+                {
+                    "schema_name": "gix_output",
+                    "table": "fme_dissolved",
+                    "geom_column": "geom",
+                    "if_exists": "replace",
+                },
+            ),
+        ],
+        "edges": [
+            {
+                "id": "e-reader-validator",
+                "source": "geojson_reader-1",
+                "target": "geometry_validator-1",
+                "sourceHandle": "output",
+                "targetHandle": "input",
+                "animated": True,
+            },
+            {
+                "id": "e-validator-tester",
+                "source": "geometry_validator-1",
+                "target": "tester-1",
+                "sourceHandle": "output",
+                "targetHandle": "input",
+                "animated": True,
+            },
+            {
+                "id": "e-validator-log",
+                "source": "geometry_validator-1",
+                "target": "log_writer-1",
+                "sourceHandle": "rejected",
+                "targetHandle": "input",
+                "animated": True,
+            },
+            {
+                "id": "e-tester-am",
+                "source": "tester-1",
+                "target": "attribute_manager-1",
+                "sourceHandle": "passed",
+                "targetHandle": "input",
+                "animated": True,
+            },
+            {
+                "id": "e-am-dissolve",
+                "source": "attribute_manager-1",
+                "target": "dissolver-1",
+                "sourceHandle": "output",
+                "targetHandle": "input",
+                "animated": True,
+            },
+            {
+                "id": "e-dissolve-pg",
+                "source": "dissolver-1",
                 "target": "postgis_writer-1",
                 "sourceHandle": "output",
                 "targetHandle": "input",

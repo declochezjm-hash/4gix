@@ -44,9 +44,25 @@ export function asFeatureCollection(
 		) {
 			return asFeatureCollection(record.preview);
 		}
+		if (record.ports && typeof record.ports === "object") {
+			const ports = record.ports as Record<string, unknown>;
+			return (
+				asFeatureCollection(ports.output) ||
+				asFeatureCollection(Object.values(ports)[0])
+			);
+		}
 		const nested: GeoJsonFeature[] = [];
 		for (const [key, item] of Object.entries(record)) {
-			if (["preview_png_base64", "path", "crs", "stats"].includes(key))
+			if (
+				[
+					"preview_png_base64",
+					"path",
+					"crs",
+					"stats",
+					"ports",
+					"metadata",
+				].includes(key)
+			)
 				continue;
 			const fc = asFeatureCollection(item);
 			if (fc) nested.push(...fc.features);
@@ -129,5 +145,84 @@ export function asRasterPreview(value: unknown): RasterPreview | null {
 			payload.stats && typeof payload.stats === "object"
 				? (payload.stats as Record<string, unknown>)
 				: undefined,
+	};
+}
+
+export function listPorts(value: unknown): string[] {
+	if (!value || typeof value !== "object") return [];
+	const record = value as Record<string, unknown>;
+	if (record.ports && typeof record.ports === "object") {
+		return Object.keys(record.ports as Record<string, unknown>);
+	}
+	return [];
+}
+
+export function pickPort(value: unknown, port?: string | null): unknown {
+	if (!value || typeof value !== "object") return value;
+	const record = value as Record<string, unknown>;
+	const ports = record.ports as Record<string, unknown> | undefined;
+	if (!ports || !port) return value;
+	if (port in ports) return ports[port];
+	const match = Object.keys(ports).find(
+		(key) => key.toLowerCase() === port.toLowerCase(),
+	);
+	return match ? ports[match] : value;
+}
+
+export function vertexCount(
+	geom?: { type?: string; coordinates?: unknown } | null,
+): number {
+	if (!geom) return 0;
+	const walk = (item: unknown): number => {
+		if (!Array.isArray(item) || !item.length) return 0;
+		if (typeof item[0] === "number") return 1;
+		return item.reduce<number>((sum, child) => sum + walk(child), 0);
+	};
+	return walk(geom.coordinates);
+}
+
+export function bboxOf(
+	geom?: { coordinates?: unknown } | null,
+): number[] | null {
+	if (!geom) return null;
+	let minx = Infinity;
+	let miny = Infinity;
+	let maxx = -Infinity;
+	let maxy = -Infinity;
+	const walk = (item: unknown) => {
+		if (!Array.isArray(item) || !item.length) return;
+		if (typeof item[0] === "number" && typeof item[1] === "number") {
+			minx = Math.min(minx, item[0] as number);
+			miny = Math.min(miny, item[1] as number);
+			maxx = Math.max(maxx, item[0] as number);
+			maxy = Math.max(maxy, item[1] as number);
+			return;
+		}
+		for (const child of item) walk(child);
+	};
+	walk(geom.coordinates);
+	if (!Number.isFinite(minx)) return null;
+	return [minx, miny, maxx, maxy];
+}
+
+export function crsFromCollection(fc: GeoJsonFeatureCollection | null): string {
+	if (!fc) return "EPSG:4326";
+	const crs = fc.crs as { properties?: { name?: string } } | string | undefined;
+	if (typeof crs === "string") return crs;
+	return crs?.properties?.name || "EPSG:4326";
+}
+
+export function inspectFeature(
+	feature: GeoJsonFeature | undefined,
+	crsHint?: string,
+) {
+	const geom = feature?.geometry || null;
+	const props = feature?.properties || {};
+	return {
+		geomType: geom?.type || "Null",
+		bbox: bboxOf(geom),
+		vertices: vertexCount(geom),
+		epsg: String(props.fme_crs || crsHint || "EPSG:4326"),
+		properties: props,
 	};
 }

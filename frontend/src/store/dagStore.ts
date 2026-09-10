@@ -156,6 +156,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 				schema: entry.schema,
 				status: "idle",
 				inputHandles: entry.input_handles || ["input"],
+				outputHandles: entry.output_handles || ["output"],
+				fmeGroup: entry.fme_group || "",
 			},
 		};
 		set({

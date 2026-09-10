@@ -189,7 +189,7 @@ body {
 }
 
 .etl-node {
-	min-width: 180px;
+	min-width: 196px;
 	position: relative;
 	background: #0e2b2b;
 	border: 1px solid var(--line);
@@ -283,9 +283,69 @@ body {
 	position: absolute;
 	left: -18px;
 	transform: translateY(-50%);
-	font-size: 0.6rem;
+	font-size: 0.58rem;
 	color: var(--muted);
 	pointer-events: none;
+	white-space: nowrap;
+	max-width: 92px;
+}
+.etl-node__handle-label--out {
+	left: auto;
+	right: -8px;
+	transform: translate(100%, -50%);
+	padding-left: 8px;
+}
+
+.palette__group h4 {
+	margin: 0.55rem 0 0.3rem;
+	font-size: 0.68rem;
+	color: #93c5fd;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.port-select {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	font-size: 0.72rem;
+	color: var(--muted);
+	margin: 0.35rem 0;
+}
+.port-select select {
+	background: #0e2b2b;
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 0.15rem 0.35rem;
+}
+.fme-inspector {
+	display: grid;
+	gap: 0.55rem;
+}
+.fme-structure {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.35rem 0.6rem;
+	margin: 0;
+	font-size: 0.75rem;
+}
+.fme-structure dt {
+	color: var(--muted);
+}
+.fme-structure dd {
+	margin: 0.1rem 0 0;
+}
+.fme-filter {
+	width: 100%;
+	background: #0e2b2b;
+	border: 1px solid var(--line);
+	color: var(--ink);
+	border-radius: 6px;
+	padding: 0.35rem 0.5rem;
+}
+tr.is-selected-feature {
+	background: rgba(250, 204, 21, 0.18);
 }
 
 .inspector {

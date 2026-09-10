@@ -1,0 +1,163 @@
+{
+  "name": "FME : Validator → Tester → Dissolver → PostGIS",
+  "nodes": [
+    {
+      "id": "geojson_reader-1",
+      "type": "etl",
+      "position": { "x": 40, "y": 160 },
+      "data": {
+        "label": "GeoJSON Reader",
+        "nodeType": "geojson_reader",
+        "category": "Reader",
+        "isSpatial": true,
+        "params": { "sample_set": "fme_demo", "use_sample": true, "geojson": "" },
+        "inputHandles": ["input"],
+        "outputHandles": ["output"]
+      }
+    },
+    {
+      "id": "geometry_validator-1",
+      "type": "etl",
+      "position": { "x": 300, "y": 160 },
+      "data": {
+        "label": "GeometryValidator",
+        "nodeType": "geometry_validator",
+        "category": "Transformer",
+        "isSpatial": true,
+        "params": { "repair": true, "allow_empty": false },
+        "inputHandles": ["input"],
+        "outputHandles": ["output", "rejected"]
+      }
+    },
+    {
+      "id": "log_writer-1",
+      "type": "etl",
+      "position": { "x": 560, "y": 320 },
+      "data": {
+        "label": "Log Writer",
+        "nodeType": "log_writer",
+        "category": "Writer",
+        "isSpatial": false,
+        "params": { "filename": "rejected.json", "label": "REJECTED" },
+        "inputHandles": ["input"],
+        "outputHandles": ["output"]
+      }
+    },
+    {
+      "id": "tester-1",
+      "type": "etl",
+      "position": { "x": 560, "y": 80 },
+      "data": {
+        "label": "Tester",
+        "nodeType": "tester",
+        "category": "Transformer",
+        "isSpatial": false,
+        "params": {
+          "logic": "AND",
+          "clauses": "[{\"attr\":\"category\",\"op\":\"eq\",\"value\":\"urban\"}]"
+        },
+        "inputHandles": ["input"],
+        "outputHandles": ["passed", "failed"]
+      }
+    },
+    {
+      "id": "attribute_manager-1",
+      "type": "etl",
+      "position": { "x": 820, "y": 80 },
+      "data": {
+        "label": "AttributeManager",
+        "nodeType": "attribute_manager",
+        "category": "Transformer",
+        "isSpatial": false,
+        "params": {
+          "operations": "[{\"op\":\"rename\",\"from\":\"name\",\"to\":\"nom\"},{\"op\":\"create\",\"name\":\"source\",\"expr\":\"'fme_demo'\"}]"
+        },
+        "inputHandles": ["input"],
+        "outputHandles": ["output"]
+      }
+    },
+    {
+      "id": "dissolver-1",
+      "type": "etl",
+      "position": { "x": 1080, "y": 80 },
+      "data": {
+        "label": "Dissolver",
+        "nodeType": "dissolver",
+        "category": "Transformer",
+        "isSpatial": true,
+        "params": { "group_by": "group" },
+        "inputHandles": ["input"],
+        "outputHandles": ["output"]
+      }
+    },
+    {
+      "id": "postgis_writer-1",
+      "type": "etl",
+      "position": { "x": 1340, "y": 80 },
+      "data": {
+        "label": "PostGIS Writer",
+        "nodeType": "postgis_writer",
+        "category": "Writer",
+        "isSpatial": true,
+        "params": {
+          "schema_name": "gix_output",
+          "table": "fme_dissolved",
+          "geom_column": "geom",
+          "if_exists": "replace"
+        },
+        "inputHandles": ["input"],
+        "outputHandles": ["output"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-reader-validator",
+      "source": "geojson_reader-1",
+      "target": "geometry_validator-1",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "animated": true
+    },
+    {
+      "id": "e-validator-tester",
+      "source": "geometry_validator-1",
+      "target": "tester-1",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "animated": true
+    },
+    {
+      "id": "e-validator-log",
+      "source": "geometry_validator-1",
+      "target": "log_writer-1",
+      "sourceHandle": "rejected",
+      "targetHandle": "input",
+      "animated": true
+    },
+    {
+      "id": "e-tester-am",
+      "source": "tester-1",
+      "target": "attribute_manager-1",
+      "sourceHandle": "passed",
+      "targetHandle": "input",
+      "animated": true
+    },
+    {
+      "id": "e-am-dissolve",
+      "source": "attribute_manager-1",
+      "target": "dissolver-1",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "animated": true
+    },
+    {
+      "id": "e-dissolve-pg",
+      "source": "dissolver-1",
+      "target": "postgis_writer-1",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "animated": true
+    }
+  ]
+}

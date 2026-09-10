@@ -20,8 +20,8 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine, BIM, raster et WFS.",
-    version="0.3.0",
+    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine, FME Workbench, BIM, raster et WFS.",
+    version="0.4.0",
     lifespan=lifespan,
 )
 

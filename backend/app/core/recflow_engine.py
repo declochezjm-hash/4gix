@@ -18,6 +18,7 @@ import networkx as nx
 
 from app.nodes import get_node_class
 from app.nodes.base import NodeSnapshot, build_snapshot_from_payload, snapshot_payload
+from app.nodes.fme_features import extract_port, normalize_handle, stamp_payload
 
 try:
     from app.core import persistence
@@ -122,16 +123,19 @@ class RecflowEngine:
         inputs: Dict[str, Any] = {}
         for predecessor in graph.predecessors(node_id):
             edge_data = graph.get_edge_data(predecessor, node_id) or {}
-            handle = edge_data.get("targetHandle") or "input"
+            target_handle = normalize_handle(edge_data.get("targetHandle") or "input", "input")
+            source_handle = normalize_handle(edge_data.get("sourceHandle") or "output", "output")
             parent_output = outputs.get(predecessor, {})
-            if handle in inputs:
-                existing = inputs[handle]
+            port_payload = extract_port(parent_output, source_handle)
+            wrapped = {"data": port_payload, "metadata": {"source_port": source_handle}}
+            if target_handle in inputs:
+                existing = inputs[target_handle]
                 if not isinstance(existing, list):
                     existing = [existing]
-                existing.append(parent_output)
-                inputs[handle] = existing
+                existing.append(wrapped)
+                inputs[target_handle] = existing
             else:
-                inputs[handle] = parent_output
+                inputs[target_handle] = wrapped
         return inputs
 
     def execute(
@@ -176,7 +180,10 @@ class RecflowEngine:
 
         for node_id in order:
             node_def = graph.nodes[node_id]
-            node_type = node_def.get("type") or node_def.get("data", {}).get("nodeType")
+            data_block = node_def.get("data") or {}
+            node_type = data_block.get("nodeType") or node_def.get("type")
+            if node_type == "etl":
+                node_type = data_block.get("nodeType")
             params = node_def.get("params")
             if params is None:
                 params = (node_def.get("data") or {}).get("params") or {}
@@ -227,6 +234,7 @@ class RecflowEngine:
 
             try:
                 payload = instance.execute(inputs=inputs, params=params) or {}
+                payload = stamp_payload(payload, feature_type=node_cls.node_type)
                 duration_ms = round((time.perf_counter() - node_started) * 1000, 3)
                 snapshot = payload.get("snapshot") or build_snapshot_from_payload(
                     node_id=node_id,

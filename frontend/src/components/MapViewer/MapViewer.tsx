@@ -16,6 +16,7 @@ type MapViewerProps = {
 	view?: MapViewState | null;
 	onViewChange?: (view: MapViewState) => void;
 	accent?: string;
+	selectedIndex?: number | null;
 };
 
 const EMPTY: GeoJsonFeatureCollection = {
@@ -54,6 +55,7 @@ export function MapViewer({
 	view,
 	onViewChange,
 	accent = "#2aa198",
+	selectedIndex = null,
 }: MapViewerProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
@@ -118,6 +120,28 @@ export function MapViewer({
 				},
 				filter: ["==", "$type", "Point"],
 			});
+			map.addSource("preview-sel", {
+				type: "geojson",
+				data: EMPTY as FeatureCollection,
+			});
+			map.addLayer({
+				id: "preview-sel-line",
+				type: "line",
+				source: "preview-sel",
+				paint: { "line-color": "#facc15", "line-width": 4 },
+			});
+			map.addLayer({
+				id: "preview-sel-point",
+				type: "circle",
+				source: "preview-sel",
+				paint: {
+					"circle-radius": 8,
+					"circle-color": "#facc15",
+					"circle-stroke-width": 2,
+					"circle-stroke-color": "#073642",
+				},
+				filter: ["==", "$type", "Point"],
+			});
 			const overlay = new MapboxOverlay({
 				interleaved: true,
 				layers: [],
@@ -177,6 +201,17 @@ export function MapViewer({
 				| maplibregl.GeoJSONSource
 				| undefined;
 			if (source) source.setData(data as FeatureCollection);
+			const highlight =
+				selectedIndex != null && data.features[selectedIndex]
+					? {
+							type: "FeatureCollection" as const,
+							features: [data.features[selectedIndex]],
+						}
+					: EMPTY;
+			const sel = map.getSource("preview-sel") as
+				| maplibregl.GeoJSONSource
+				| undefined;
+			if (sel) sel.setData(highlight as FeatureCollection);
 			overlayRef.current?.setProps({
 				layers: mode3d
 					? [
@@ -219,7 +254,7 @@ export function MapViewer({
 		};
 		if (map.isStyleLoaded()) apply();
 		else map.once("load", apply);
-	}, [geojson, view, mode3d]);
+	}, [geojson, view, mode3d, selectedIndex]);
 
 	return (
 		<div className="map-viewer-wrap">

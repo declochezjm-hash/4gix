@@ -28,6 +28,51 @@ SAMPLE_GEOJSON = {
 }
 
 
+SAMPLE_FME_DEMO = {
+    "type": "FeatureCollection",
+    "crs": {"type": "name", "properties": {"name": "EPSG:4326"}},
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"name": "Quartier Nord", "category": "urban", "group": "A"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.30, 48.86], [2.35, 48.86], [2.35, 48.89], [2.30, 48.89], [2.30, 48.86]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Quartier Sud", "category": "urban", "group": "A"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.30, 48.83], [2.35, 48.83], [2.35, 48.86], [2.30, 48.86], [2.30, 48.83]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Zone Est", "category": "urban", "group": "B"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.35, 48.84], [2.40, 48.84], [2.40, 48.88], [2.35, 48.88], [2.35, 48.84]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Bowtie", "category": "broken", "group": "X"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[2.41, 48.85], [2.43, 48.87], [2.41, 48.87], [2.43, 48.85], [2.41, 48.85]]],
+            },
+        },
+        {
+            "type": "Feature",
+            "properties": {"name": "Sans geometrie", "category": "broken", "group": "X"},
+            "geometry": None,
+        },
+    ],
+}
+
+
 SAMPLE_REGIONS = {
     "type": "FeatureCollection",
     "features": [
@@ -76,8 +121,8 @@ class GeoJSONReader(Base4GIxNode):
                 "sample_set": {
                     "type": "string",
                     "title": "Jeu d'exemple",
-                    "enum": ["cities", "regions"],
-                    "enumNames": ["Villes (points)", "Régions (polygones)"],
+                    "enum": ["cities", "regions", "fme_demo"],
+                    "enumNames": ["Villes (points)", "Régions (polygones)", "Démo FME (polygones + invalides)"],
                     "default": "cities",
                 },
                 "geojson": {
@@ -102,7 +147,12 @@ class GeoJSONReader(Base4GIxNode):
         if raw:
             parsed = json.loads(raw) if isinstance(raw, str) else raw
         elif use_sample:
-            parsed = SAMPLE_REGIONS if sample_set == "regions" else SAMPLE_GEOJSON
+            if sample_set == "regions":
+                parsed = SAMPLE_REGIONS
+            elif sample_set == "fme_demo":
+                parsed = SAMPLE_FME_DEMO
+            else:
+                parsed = SAMPLE_GEOJSON
         else:
             parsed = {"type": "FeatureCollection", "features": []}
 

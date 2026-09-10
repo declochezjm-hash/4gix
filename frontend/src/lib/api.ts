@@ -29,6 +29,8 @@ export type CatalogNode = {
 	description: string;
 	schema: NodeSchema;
 	input_handles?: string[];
+	output_handles?: string[];
+	fme_group?: string;
 };
 
 export type NodeSnapshot = {
@@ -89,6 +91,8 @@ export type FlowNodeData = {
 	durationMs?: number;
 	error?: string | null;
 	inputHandles?: string[];
+	outputHandles?: string[];
+	fmeGroup?: string;
 };
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
