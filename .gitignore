@@ -1,0 +1,17 @@
+.env
+.env.*
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+backend/.venv/
+
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+*.egg-info/
+.DS_Store
+Thumbs.db

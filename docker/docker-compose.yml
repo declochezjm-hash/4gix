@@ -1,0 +1,95 @@
+name: 4gix
+
+services:
+  4gix-postgis:
+    image: postgis/postgis:15-3.3
+    container_name: 4gix-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: 4gix_user
+      POSTGRES_PASSWORD: 4gix_password
+      POSTGRES_DB: 4gix_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - 4gix_postgis_data:/var/lib/postgresql/data
+      - ./postgis/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 4gix_user -d 4gix_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - 4gix-net
+
+  4gix:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: 4gix
+    restart: unless-stopped
+    depends_on:
+      4gix-postgis:
+        condition: service_healthy
+    environment:
+      FOURGIX_APP_NAME: 4GIx
+      FOURGIX_ENV: local
+      FOURGIX_HOST: 0.0.0.0
+      FOURGIX_PORT: 8000
+      FOURGIX_CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
+      FOURGIX_DATABASE_URL: postgresql://4gix_user:4gix_password@4gix-postgis:5432/4gix_db
+      FOURGIX_POSTGIS_HOST: 4gix-postgis
+      FOURGIX_POSTGIS_PORT: 5432
+      FOURGIX_POSTGIS_USER: 4gix_user
+      FOURGIX_POSTGIS_PASSWORD: 4gix_password
+      FOURGIX_POSTGIS_DB: 4gix_db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend/app:/app/app
+      - 4gix_workspace:/workspace
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    networks:
+      - 4gix-net
+
+  4gix-ui:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: 4gix-ui
+    restart: unless-stopped
+    depends_on:
+      4gix:
+        condition: service_healthy
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend/src:/app/src
+      - ../frontend/index.html:/app/index.html
+      - ../frontend/vite.config.ts:/app/vite.config.ts
+    networks:
+      - 4gix-net
+
+volumes:
+  4gix_postgis_data:
+  4gix_workspace:
+
+networks:
+  4gix-net:
+    name: 4gix-net
+    driver: bridge
