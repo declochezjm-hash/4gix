@@ -1,8 +1,10 @@
 import {
 	Background,
 	BackgroundVariant,
+	type Connection,
 	ConnectionLineType,
 	type Edge,
+	type EdgeTypes,
 	type FinalConnectionState,
 	type NodeTypes,
 	ReactFlow,
@@ -30,9 +32,11 @@ import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
 import { EdgeContextMenu } from "./EdgeContextMenu";
 import { EtlNode } from "./EtlNode";
+import { N8nEdge } from "./N8nEdge";
 import { NodeContextMenu } from "./NodeContextMenu";
 
 const nodeTypes = { etl: EtlNode } as NodeTypes;
+const edgeTypes = { n8nEdge: N8nEdge } as EdgeTypes;
 
 const FIT_VIEW_OPTIONS = {
 	padding: 0.14,
@@ -113,23 +117,29 @@ function FlowCanvasInner() {
 		[nodes, visibleIdSet],
 	);
 
+	const lastExecution = useDagStore((s) => s.lastExecution);
 	const displayEdges = useMemo(
 		() =>
 			edges.map((edge) => {
 				const hidden =
 					visibleIdSet &&
 					(!visibleIdSet.has(edge.source) || !visibleIdSet.has(edge.target));
+				const running =
+					lastExecution?.status === "RUNNING" ||
+					lastExecution?.status === "running";
 				return {
 					...edge,
+					type: "n8nEdge",
 					hidden: Boolean(hidden),
-					style: {
-						...(edge.style || {}),
-						stroke: "#9aa3af",
-						strokeWidth: canvasPaginationEnabled ? 2.75 : 2,
+					interactionWidth: 28,
+					data: {
+						...(edge.data || {}),
+						pathStyle: edgePathStyle,
+						active: running,
 					},
 				};
 			}),
-		[edges, visibleIdSet, canvasPaginationEnabled],
+		[edges, visibleIdSet, edgePathStyle, lastExecution?.status],
 	);
 
 	const [edgeMenu, setEdgeMenu] = useState<{
@@ -208,13 +218,20 @@ function FlowCanvasInner() {
 
 	const defaultEdgeOptions = useMemo(
 		() => ({
-			type: edgePathStyle,
+			type: "n8nEdge",
+			data: { pathStyle: edgePathStyle },
 			animated: false,
 			interactionWidth: 22,
-			style: { stroke: "#8a8d93", strokeWidth: 2 },
+			style: { stroke: "#52525B", strokeWidth: 2.5 },
 		}),
 		[edgePathStyle],
 	);
+
+	const isValidConnection = useCallback((connection: Connection) => {
+		if (!connection.source || !connection.target) return false;
+		if (connection.source === connection.target) return false;
+		return true;
+	}, []);
 
 	const onReconnectEnd = useCallback(
 		(
@@ -262,6 +279,7 @@ function FlowCanvasInner() {
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
+				isValidConnection={isValidConnection}
 				onReconnect={onReconnect}
 				onReconnectEnd={onReconnectEnd}
 				onConnectEnd={onConnectEnd}
@@ -293,6 +311,7 @@ function FlowCanvasInner() {
 					setEdgeMenu(null);
 				}}
 				nodeTypes={nodeTypes}
+				edgeTypes={edgeTypes}
 				nodesDraggable={!canvasLocked}
 				nodesConnectable={!canvasLocked}
 				elementsSelectable={!canvasLocked}
@@ -301,7 +320,7 @@ function FlowCanvasInner() {
 				elevateEdgesOnSelect
 				elevateNodesOnSelect
 				defaultEdgeOptions={defaultEdgeOptions}
-				connectionLineStyle={{ stroke: "#8a8d93", strokeWidth: 2 }}
+				connectionLineStyle={{ stroke: "#52525B", strokeWidth: 2.5 }}
 			>
 				<CanvasViewportSync />
 				<Background

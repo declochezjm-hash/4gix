@@ -344,9 +344,7 @@ export async function fileLooksLikeGeoJSON(file: File): Promise<boolean> {
 		const parsed = JSON.parse(sample) as { type?: string };
 		const kind = parsed?.type;
 		return (
-			kind === "FeatureCollection" ||
-			kind === "Feature" ||
-			kind === "Geometry"
+			kind === "FeatureCollection" || kind === "Feature" || kind === "Geometry"
 		);
 	} catch {
 		return false;

@@ -67,14 +67,16 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 	},
 	excel_reader: {
 		title: "Excel Reader",
-		summary: "Incorpore des données tabulaires depuis des fichiers .xlsx ou .xls.",
+		summary:
+			"Incorpore des données tabulaires depuis des fichiers .xlsx ou .xls.",
 		description:
 			"Lit les lignes d'une feuille Excel. Si des colonnes de coordonnées (X/Y, lon/lat) sont détectées automatiquement, le nœud génère des points en EPSG:4326 pour la carte.",
 		parametersHelp: [
 			{
 				name: "Fichier Excel",
 				type: "Fichier / String",
-				description: "Chemin dans /workspace (souvent rempli au drag-and-drop).",
+				description:
+					"Chemin dans /workspace (souvent rempli au drag-and-drop).",
 				example: "/workspace/uploads/clients.xlsx",
 			},
 			{
@@ -128,7 +130,10 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 			"Exécutez le nœud et consultez Tableau / Carte dans la sortie.",
 		],
 		portsHelp: [
-			{ port: "output", description: "Enregistrements tabulaires ou FeatureCollection." },
+			{
+				port: "output",
+				description: "Enregistrements tabulaires ou FeatureCollection.",
+			},
 		],
 		example: {
 			input: "stations.csv avec colonnes x, y, nom",
@@ -191,9 +196,7 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 			"Désactivez « jeu d'exemple » si vous utilisez vos données.",
 			"Exécutez et visualisez Tableau / Carte.",
 		],
-		portsHelp: [
-			{ port: "output", description: "FeatureCollection GeoJSON." },
-		],
+		portsHelp: [{ port: "output", description: "FeatureCollection GeoJSON." }],
 		example: {
 			input: "zones.geojson (polygones d'étude)",
 			output: "Entités prêtes pour buffer, jointure, etc.",
@@ -284,7 +287,8 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 			{
 				name: "Add/Set Fields",
 				type: "Expression",
-				description: "Crée une nouvelle colonne avec une valeur fixe ou calculée.",
+				description:
+					"Crée une nouvelle colonne avec une valeur fixe ou calculée.",
 				example: "statut = 'VALIDE'",
 			},
 		],
@@ -331,7 +335,10 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 			"Retournez l'objet transformé à la fin du script.",
 		],
 		portsHelp: [
-			{ port: "output", description: "Résultat retourné par le script Python." },
+			{
+				port: "output",
+				description: "Résultat retourné par le script Python.",
+			},
 			{
 				port: "rejected",
 				description: "Capture le message d'erreur si le script échoue.",
@@ -375,7 +382,8 @@ export const NODE_DOCS: Record<string, NodeDoc> = {
 		],
 		example: {
 			input: "Points de stations de métro",
-			output: "Polygones représentant un rayon de 300 m autour de chaque station",
+			output:
+				"Polygones représentant un rayon de 300 m autour de chaque station",
 		},
 	},
 };

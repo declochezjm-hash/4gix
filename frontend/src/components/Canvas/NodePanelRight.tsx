@@ -14,6 +14,7 @@ export function NodePanelRight() {
 	const catalogLoaded = useDagStore((s) => s.catalogLoaded);
 	const panelError = useDagStore((s) => s.error);
 	const pendingConnect = useDagStore((s) => s.pendingConnect);
+	const pendingEdgeInsert = useDagStore((s) => s.pendingEdgeInsert);
 	const [query, setQuery] = useState("");
 	const [expandedGroups, setExpandedGroups] = useState<Set<N8nGroupId>>(
 		new Set(),
@@ -75,7 +76,11 @@ export function NodePanelRight() {
 			<header className="n8n-panel__head">
 				<div>
 					<p className="n8n-panel__kicker">
-						{pendingConnect ? "Connecter un nœud" : "Ajouter un nœud"}
+						{pendingEdgeInsert
+							? "Insérer sur la liaison"
+							: pendingConnect
+								? "Connecter un nœud"
+								: "Ajouter un nœud"}
 					</p>
 					<h2>What happens next?</h2>
 					<p className="n8n-panel__hint">

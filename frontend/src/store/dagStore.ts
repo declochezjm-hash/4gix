@@ -22,11 +22,11 @@ import {
 	fetchCatalog,
 	fetchNodeSnapshot,
 	fetchWorkflows,
+	fileLooksLikeGeoJSON,
 	importFmwFile,
+	isDataImportFilename,
 	isFmwFilename,
 	isShapefileZipFilename,
-	isDataImportFilename,
-	fileLooksLikeGeoJSON,
 	type MapViewState,
 	type NodeSnapshot,
 	saveWorkflow,
@@ -39,7 +39,6 @@ import {
 	buildCanvasEdge,
 	type EdgePathStyle,
 	normalizeCanvasEdges,
-	stripEdgesFromSourceHandle,
 } from "../lib/canvasEdges";
 import {
 	layoutNodesByLayer,
@@ -53,6 +52,14 @@ type NodeStatus = NonNullable<FlowNodeData["status"]>;
 export type PendingConnect = {
 	nodeId: string;
 	handleId: string;
+};
+
+export type PendingEdgeInsert = {
+	edgeId: string;
+	source: string;
+	target: string;
+	sourceHandle: string;
+	targetHandle: string;
 };
 
 export type ContextMenuState = {
@@ -80,6 +87,7 @@ type DagState = {
 	inspectorOpen: boolean;
 	nodePanelOpen: boolean;
 	pendingConnect: PendingConnect | null;
+	pendingEdgeInsert: PendingEdgeInsert | null;
 	contextMenu: ContextMenuState | null;
 	nodeClipboard: Node<FlowNodeData> | null;
 	canvasLocked: boolean;
@@ -104,6 +112,7 @@ type DagState = {
 	selectNode: (id: string | null) => void;
 	openInspector: (id?: string | null) => void;
 	openNodePanel: (pending?: PendingConnect | null) => void;
+	openNodePanelForEdgeInsert: (pending: PendingEdgeInsert) => void;
 	closeNodePanel: () => void;
 	updateNodeParams: (id: string, params: Record<string, unknown>) => void;
 	updateNodeData: (id: string, patch: Partial<FlowNodeData>) => void;
@@ -316,6 +325,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 	inspectorOpen: false,
 	nodePanelOpen: false,
 	pendingConnect: null,
+	pendingEdgeInsert: null,
 	contextMenu: null,
 	nodeClipboard: null,
 	canvasLocked: false,
@@ -335,21 +345,20 @@ export const useDagStore = create<DagState>((set, get) => ({
 
 	onConnect: (connection) => {
 		const pathStyle = get().edgePathStyle;
-		const base = stripEdgesFromSourceHandle(get().edges, connection);
 		set({
-			edges: addEdge(buildCanvasEdge(connection, pathStyle), base),
+			edges: addEdge(buildCanvasEdge(connection, pathStyle), get().edges),
 			pendingConnect: null,
 		});
 	},
 
 	onReconnect: (oldEdge, connection) => {
-		const without = get().edges.filter((edge) => edge.id !== oldEdge.id);
-		const stripped = stripEdgesFromSourceHandle(without, connection);
+		const pathStyle = get().edgePathStyle;
+		const edgeType = buildCanvasEdge(connection, pathStyle).type;
 		set({
 			edges: reconnectEdge(
-				{ ...oldEdge, type: get().edgePathStyle },
+				{ ...oldEdge, type: edgeType },
 				connection,
-				stripped,
+				get().edges,
 			),
 		});
 	},
@@ -382,7 +391,53 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	insertNodeFromPanel: (entry) => {
-		const { pendingConnect, selectedNodeId, nodes, edges } = get();
+		const { pendingConnect, pendingEdgeInsert, selectedNodeId, nodes, edges } =
+			get();
+		const pathStyle = get().edgePathStyle;
+
+		if (pendingEdgeInsert) {
+			const sourceNode = nodes.find((n) => n.id === pendingEdgeInsert.source);
+			const targetNode = nodes.find((n) => n.id === pendingEdgeInsert.target);
+			const position =
+				sourceNode && targetNode
+					? {
+							x: (sourceNode.position.x + targetNode.position.x) / 2,
+							y: (sourceNode.position.y + targetNode.position.y) / 2,
+						}
+					: {
+							x: 280 + (nodes.length % 4) * 40,
+							y: 140 + nodes.length * 12,
+						};
+			const node = buildNode(entry, position);
+			const targetHandle = entry.input_handles?.[0] || "input";
+			const outHandle = entry.output_handles?.[0] || "output";
+			const linkIn: Connection = {
+				source: pendingEdgeInsert.source,
+				sourceHandle: pendingEdgeInsert.sourceHandle,
+				target: node.id,
+				targetHandle,
+			};
+			const linkOut: Connection = {
+				source: node.id,
+				sourceHandle: outHandle,
+				target: pendingEdgeInsert.target,
+				targetHandle: pendingEdgeInsert.targetHandle,
+			};
+			const without = edges.filter((e) => e.id !== pendingEdgeInsert.edgeId);
+			let nextEdges = addEdge(buildCanvasEdge(linkIn, pathStyle), without);
+			nextEdges = addEdge(buildCanvasEdge(linkOut, pathStyle), nextEdges);
+			set({
+				nodes: [...nodes, node],
+				edges: nextEdges,
+				selectedNodeId: node.id,
+				nodePanelOpen: false,
+				pendingConnect: null,
+				pendingEdgeInsert: null,
+				inspectorOpen: false,
+			});
+			return;
+		}
+
 		const sourceId = pendingConnect?.nodeId || selectedNodeId;
 		const source = nodes.find((node) => node.id === sourceId);
 		const position = source
@@ -400,10 +455,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 				target: node.id,
 				targetHandle,
 			};
-			nextEdges = addEdge(
-				buildCanvasEdge(link, get().edgePathStyle),
-				stripEdgesFromSourceHandle(edges, link),
-			);
+			nextEdges = addEdge(buildCanvasEdge(link, pathStyle), edges);
 		}
 		set({
 			nodes: [...nodes, node],
@@ -411,6 +463,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			selectedNodeId: node.id,
 			nodePanelOpen: false,
 			pendingConnect: null,
+			pendingEdgeInsert: null,
 			inspectorOpen: false,
 		});
 	},
@@ -463,10 +516,24 @@ export const useDagStore = create<DagState>((set, get) => ({
 		set({
 			nodePanelOpen: true,
 			pendingConnect: pending,
+			pendingEdgeInsert: null,
 			inspectorOpen: false,
 		}),
 
-	closeNodePanel: () => set({ nodePanelOpen: false, pendingConnect: null }),
+	openNodePanelForEdgeInsert: (pending) =>
+		set({
+			nodePanelOpen: true,
+			pendingEdgeInsert: pending,
+			pendingConnect: null,
+			inspectorOpen: false,
+		}),
+
+	closeNodePanel: () =>
+		set({
+			nodePanelOpen: false,
+			pendingConnect: null,
+			pendingEdgeInsert: null,
+		}),
 
 	updateNodeParams: (id, params) =>
 		set({

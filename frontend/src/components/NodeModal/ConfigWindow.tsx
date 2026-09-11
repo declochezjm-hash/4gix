@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { getNodeDoc } from "../../config/nodeDocs";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { AttributeManagerConfig } from "./AttributeManagerConfig";
 import { CodeEditorParam } from "./CodeEditorParam";
 import { defaultCodeForLanguage } from "./codeTemplates";
 import type { InspectorConfigTab } from "./configTabs";
@@ -270,10 +271,7 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 		(item) => item.node_type === node?.data.nodeType,
 	);
 	const nodeDoc = useMemo(
-		() =>
-			node
-				? getNodeDoc(node.data.nodeType, catalogEntry)
-				: null,
+		() => (node ? getNodeDoc(node.data.nodeType, catalogEntry) : null),
 		[node, catalogEntry],
 	);
 	const properties = useMemo(
@@ -335,9 +333,7 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 					</button>
 				</div>
 			</header>
-			{tab === "help" && nodeDoc ? (
-				<NodeHelpPane doc={nodeDoc} />
-			) : null}
+			{tab === "help" && nodeDoc ? <NodeHelpPane doc={nodeDoc} /> : null}
 			{tab === "settings" ? (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
 					<label>
@@ -385,6 +381,14 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 						onChange={(patch) => updateNodeParams(node.id, patch)}
 					/>
 				</form>
+			) : tab === "parameters" && node.data.nodeType === "attribute_manager" ? (
+				<AttributeManagerConfig
+					nodeId={node.id}
+					operations={node.data.params.operations}
+					onOperationsChange={(json) =>
+						updateNodeParams(node.id, { operations: json })
+					}
+				/>
 			) : tab === "parameters" ? (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
 					{Object.keys(properties).length === 0 ? (

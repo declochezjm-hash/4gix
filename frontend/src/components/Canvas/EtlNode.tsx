@@ -9,10 +9,10 @@ const HANDLE_LABEL: Record<string, string> = {
 	input: "Input",
 	input_a: "A",
 	input_b: "B",
-	output: "Output",
+	output: "Success",
 	passed: "Passed",
 	failed: "Failed",
-	rejected: "Rejected",
+	rejected: "Error",
 	unique: "Unique",
 	duplicate: "Duplicate",
 	merged: "Merged",
@@ -123,19 +123,24 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 					+
 				</button>
 				{outHandles.map((handleId, index) => (
-					<Handle
-						key={`out-${handleId}`}
-						type="source"
-						position={Position.Right}
-						id={handleId}
-						className="n8n-handle n8n-handle--out"
-						isConnectable={!canvasLocked}
-						style={{ top: `${((index + 1) / (outHandles.length + 1)) * 100}%` }}
+					<div
+						key={`out-wrap-${handleId}`}
+						className="n8n-handle-out-wrap"
+						style={{
+							top: `${((index + 1) / (outHandles.length + 1)) * 100}%`,
+						}}
 					>
-						<span className="n8n-handle__tip n8n-handle__tip--out">
+						<span className="n8n-handle__label n8n-handle__label--out">
 							{labelOf(handleId)}
 						</span>
-					</Handle>
+						<Handle
+							type="source"
+							position={Position.Right}
+							id={handleId}
+							className="n8n-handle n8n-handle--out"
+							isConnectable={!canvasLocked}
+						/>
+					</div>
 				))}
 			</div>
 		</>
