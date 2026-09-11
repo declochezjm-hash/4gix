@@ -67,6 +67,7 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	duplicate_filter: "data",
 	python_caller: "data",
 	code_node: "data",
+	composer_agent: "ai",
 	geometry_validator: "gis",
 	geometry_filter: "gis",
 	snapper: "gis",

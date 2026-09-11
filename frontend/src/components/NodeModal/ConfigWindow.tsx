@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { getNodeDoc } from "../../config/nodeDocs";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { ComposerAgentPanel } from "../agent/ComposerAgentPanel";
 import { AttributeManagerConfig } from "./AttributeManagerConfig";
 import { CodeEditorParam } from "./CodeEditorParam";
 import { defaultCodeForLanguage } from "./codeTemplates";
@@ -362,6 +363,8 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 						<input value={node.data.nodeType} readOnly />
 					</label>
 				</form>
+			) : tab === "parameters" && node.data.nodeType === "composer_agent" ? (
+				<ComposerAgentPanel composerNodeId={node.id} />
 			) : tab === "parameters" && isCodeNodeType(node.data.nodeType) ? (
 				<form
 					className="config-form config-form--code"

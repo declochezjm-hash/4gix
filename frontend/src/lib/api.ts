@@ -95,6 +95,7 @@ export type FlowNodeData = {
 	paletteGroup?: string;
 	notes?: string;
 	disabled?: boolean;
+	isGhost?: boolean;
 };
 
 const API_BASE = import.meta.env.VITE_API_URL || "";

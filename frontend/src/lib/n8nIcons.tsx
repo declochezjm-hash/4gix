@@ -37,6 +37,9 @@ export function catalogEntryIcon(
 	entry: Pick<CatalogNode, "node_type" | "category">,
 ): LucideIcon {
 	const type = entry.node_type || "";
+	if (type === "composer_agent") {
+		return Bot;
+	}
 	if (type === "python_caller" || type === "code_node") {
 		return Terminal;
 	}

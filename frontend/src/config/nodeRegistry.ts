@@ -116,6 +116,12 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 			"Monaco",
 		],
 	},
+	composer_agent: {
+		displayName: "Composer Agent",
+		paletteDescription:
+			"Agent IA : propose des nœuds et remplace ce bloc à l'acceptation",
+		searchTags: ["Composer", "Agent", "AI", "LLM", "Composer Agent"],
+	},
 	clipper: {
 		displayName: "Clip Features",
 		paletteDescription: "Split features inside and outside a clip mask",

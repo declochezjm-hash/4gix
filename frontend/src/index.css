@@ -2179,3 +2179,195 @@ tr.is-selected-feature {
 .pill--writer {
 	color: var(--writer);
 }
+
+/* Composer Agent (nœud) — styles locaux, n'écrase pas le layout */
+.n8n-node--composer {
+	border-color: rgba(168, 85, 247, 0.55);
+}
+.ghost-node-overlay {
+	outline: 2px dashed #a855f7;
+	outline-offset: 2px;
+	opacity: 0.88;
+}
+.ghost-node-overlay__badge {
+	position: absolute;
+	top: -10px;
+	left: 8px;
+	font-size: 0.58rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #1a1a1a;
+	background: #c4b5fd;
+	border-radius: 999px;
+	padding: 0.08rem 0.4rem;
+	z-index: 2;
+}
+.composer-agent-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.55rem;
+	min-height: 0;
+}
+.composer-agent-panel__hint {
+	margin: 0;
+	font-size: 0.78rem;
+	color: var(--muted);
+	line-height: 1.4;
+}
+.composer-agent-panel__toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.78rem;
+	cursor: pointer;
+}
+.composer-agent-panel__accordion {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	width: 100%;
+	border: 1px solid var(--line);
+	background: rgba(168, 85, 247, 0.12);
+	color: var(--ink);
+	border-radius: 8px;
+	padding: 0.45rem 0.6rem;
+	cursor: pointer;
+	font: inherit;
+}
+.composer-agent-panel__thoughts {
+	list-style: none;
+	margin: 0;
+	padding: 0.35rem 0.15rem 0;
+	max-height: 140px;
+	overflow: auto;
+	font-size: 0.78rem;
+	color: var(--muted);
+}
+.composer-agent-panel__thoughts li {
+	margin-bottom: 0.35rem;
+}
+.composer-agent-panel__muted {
+	color: var(--muted);
+	font-size: 0.75rem;
+}
+.composer-agent-panel__tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+.composer-agent-panel__tools span {
+	font-size: 0.68rem;
+	background: rgba(168, 85, 247, 0.18);
+	color: #e9d5ff;
+	border-radius: 999px;
+	padding: 0.15rem 0.5rem;
+}
+.composer-agent-panel__schema {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 0.5rem 0.6rem;
+	font-size: 0.75rem;
+}
+.composer-agent-panel__schema h3 {
+	margin: 0 0 0.35rem;
+	font-size: 0.68rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #c4b5fd;
+}
+.composer-agent-panel__schema ul {
+	list-style: none;
+	margin: 0.35rem 0 0;
+	padding: 0;
+	max-height: 120px;
+	overflow: auto;
+}
+.composer-agent-panel__schema li {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+.composer-agent-panel__error {
+	color: #ff8a80;
+	font-size: 0.78rem;
+	margin: 0;
+}
+.composer-agent-panel__prompt {
+	width: 100%;
+	resize: vertical;
+	background: #111113;
+	border: 1px solid #a855f7;
+	color: var(--ink);
+	border-radius: 8px;
+	padding: 0.5rem 0.6rem;
+	font: inherit;
+}
+.composer-agent-panel__mentions {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	overflow: hidden;
+}
+.composer-agent-panel__mentions button {
+	width: 100%;
+	text-align: left;
+	border: 0;
+	background: #1e1e1e;
+	color: inherit;
+	padding: 0.4rem 0.55rem;
+	cursor: pointer;
+	display: grid;
+}
+.composer-agent-panel__mentions button.is-active,
+.composer-agent-panel__mentions button:hover {
+	background: #323338;
+}
+.composer-agent-panel__mentions small {
+	color: var(--muted);
+	font-size: 0.68rem;
+}
+.composer-agent-panel__send {
+	align-self: flex-end;
+	background: #a855f7;
+	color: #1a1a1a;
+	border: 0;
+	border-radius: 6px;
+	padding: 0.4rem 0.75rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+.composer-agent-panel__send:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.composer-agent-panel__review {
+	border-top: 1px solid var(--line);
+	padding-top: 0.55rem;
+	font-size: 0.78rem;
+}
+.composer-agent-panel__review div {
+	display: flex;
+	gap: 0.4rem;
+	margin-top: 0.4rem;
+}
+.composer-agent-panel__accept,
+.composer-agent-panel__reject {
+	border-radius: 6px;
+	padding: 0.4rem 0.7rem;
+	cursor: pointer;
+	font: inherit;
+	font-weight: 600;
+}
+.composer-agent-panel__accept {
+	background: #22c55e;
+	border: 0;
+	color: #052e16;
+}
+.composer-agent-panel__reject {
+	background: transparent;
+	border: 1px solid var(--line);
+	color: var(--ink);
+}

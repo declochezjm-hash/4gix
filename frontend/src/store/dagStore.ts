@@ -41,6 +41,10 @@ import {
 	normalizeCanvasEdges,
 } from "../lib/canvasEdges";
 import {
+	applyComposerGraphReplacement,
+	computeComposerRemoveIds,
+} from "../lib/composerCanvas";
+import {
 	layoutNodesByLayer,
 	PAGINATION_NODE_THRESHOLD,
 	positionsOverlapRatio,
@@ -153,6 +157,11 @@ type DagState = {
 	) => Promise<void>;
 	exportCurrentFmw: () => Promise<void>;
 	setCanvasLocked: (locked: boolean) => void;
+	applyComposerReplacement: (
+		anchorNodeId: string,
+		proposedNodes: Node<FlowNodeData>[],
+		proposedEdges: Edge[],
+	) => void;
 };
 
 function schemaDefaults(entry: CatalogNode): Record<string, unknown> {
@@ -1063,10 +1072,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 				geotiff: "GeoTIFF",
 			};
 			const kind = typeLabels[payload.detected_type] || payload.detected_type;
-			const shpSoloHint =
-				file.name.toLowerCase().endsWith(".shp")
-					? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
-					: "";
+			const shpSoloHint = file.name.toLowerCase().endsWith(".shp")
+				? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
+				: "";
 			set({
 				nodes: [...get().nodes, node],
 				selectedNodeId: node.id,
@@ -1115,6 +1123,36 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	setCanvasLocked: (locked) => set({ canvasLocked: locked }),
+
+	applyComposerReplacement: (anchorNodeId, proposedNodes, proposedEdges) => {
+		const state = get();
+		const anchor = state.nodes.find((node) => node.id === anchorNodeId);
+		const replaceDownstream = anchor?.data.params?.replace_downstream !== false;
+		const removeIds = computeComposerRemoveIds(
+			anchorNodeId,
+			Boolean(replaceDownstream),
+			state.nodes,
+			state.edges,
+		);
+		const { nodes, edges } = applyComposerGraphReplacement(
+			state.nodes,
+			state.edges,
+			state.edgePathStyle,
+			anchorNodeId,
+			removeIds,
+			proposedNodes,
+			proposedEdges,
+		);
+		set({
+			nodes,
+			edges,
+			inspectorOpen: false,
+			selectedNodeId:
+				state.selectedNodeId && removeIds.includes(state.selectedNodeId)
+					? null
+					: state.selectedNodeId,
+		});
+	},
 }));
 
 async function executeViaSocket(

@@ -67,4 +67,5 @@ def root() -> dict:
         "execute": "/api/execute",
         "workflows": "/api/workflows",
         "ws": "/api/ws/execute",
+        "composer": "/api/v1/agent/composer",
     }

@@ -80,7 +80,12 @@ export function NodeModal() {
 						type="button"
 						className="n8n-test-btn"
 						onClick={() => void runSelectedNode()}
-						disabled={running}
+						disabled={running || node.data.nodeType === "composer_agent"}
+						title={
+							node.data.nodeType === "composer_agent"
+								? "Le Composer ne s'exécute pas — Accept pour matérialiser le graphe"
+								: undefined
+						}
 					>
 						{running ? "Executing…" : "Test step"}
 					</button>
