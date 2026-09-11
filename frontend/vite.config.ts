@@ -9,6 +9,7 @@ export default defineConfig({
 			"@deck.gl/layers",
 			"@deck.gl/mapbox",
 			"maplibre-gl",
+			"lucide-react",
 		],
 	},
 	css: {
@@ -20,6 +21,9 @@ export default defineConfig({
 		host: "0.0.0.0",
 		port: 5173,
 		strictPort: true,
+		headers: {
+			"Cache-Control": "no-store",
+		},
 		proxy: {
 			"/api": {
 				target: "http://4gix:8000",

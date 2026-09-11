@@ -11,22 +11,54 @@ export type N8nGroupId =
 export type N8nGroup = {
 	id: N8nGroupId;
 	title: string;
+	shortTitle: string;
+	description: string;
 	color: string;
-	glyph: string;
 };
 
 export const N8N_GROUPS: N8nGroup[] = [
-	{ id: "ai", title: "Advanced AI / ML", color: "#8B5CF6", glyph: "✦" },
-	{ id: "data", title: "Data Transformation", color: "#7C3AED", glyph: "ƒ" },
+	{
+		id: "ai",
+		title: "Advanced AI / ML",
+		shortTitle: "Advanced AI",
+		description: "Agents, résumés de documents et recherche sémantique.",
+		color: "#8B5CF6",
+	},
+	{
+		id: "data",
+		title: "Data Transformation",
+		shortTitle: "Data transformation",
+		description: "Modifier, filtrer, fusionner et transformer les attributs.",
+		color: "#7C3AED",
+	},
 	{
 		id: "gis",
 		title: "GIS & Spatial Analysis",
+		shortTitle: "GIS & spatial",
+		description: "Buffers, jointures spatiales, géométrie et projections.",
 		color: "#3B82F6",
-		glyph: "◎",
 	},
-	{ id: "bim", title: "BIM & 3D", color: "#F59E0B", glyph: "⌂" },
-	{ id: "raster", title: "Raster & MNT", color: "#14B8A6", glyph: "▦" },
-	{ id: "io", title: "Readers / Writers", color: "#22C55E", glyph: "▤" },
+	{
+		id: "bim",
+		title: "BIM & 3D",
+		shortTitle: "BIM & 3D",
+		description: "IFC, DXF et modèles 3D pour l’analyse métier.",
+		color: "#F59E0B",
+	},
+	{
+		id: "raster",
+		title: "Raster & MNT",
+		shortTitle: "Raster & elevation",
+		description: "GeoTIFF, statistiques zonales et raster.",
+		color: "#14B8A6",
+	},
+	{
+		id: "io",
+		title: "Readers / Writers",
+		shortTitle: "Apps & data stores",
+		description: "Lire et écrire Shapefile, PostGIS, GeoJSON, fichiers.",
+		color: "#22C55E",
+	},
 ];
 
 const TYPE_GROUP: Record<string, N8nGroupId> = {
@@ -75,19 +107,6 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	rest_wfs_reader: "io",
 };
 
-const TYPE_GLYPH: Record<string, string> = {
-	python_caller: "{}",
-	code_node: "{}",
-};
-
-export function entryGlyph(
-	entry: Pick<CatalogNode, "node_type" | "category">,
-): string {
-	const type = entry.node_type || "";
-	if (TYPE_GLYPH[type]) return TYPE_GLYPH[type];
-	return groupMeta(groupIdOf(entry)).glyph;
-}
-
 export function groupIdOf(entry: Pick<CatalogNode, "node_type" | "category">): N8nGroupId {
 	if (TYPE_GROUP[entry.node_type]) return TYPE_GROUP[entry.node_type];
 	if (entry.category === "Reader" || entry.category === "Writer") return "io";
@@ -110,8 +129,7 @@ export function nodeChrome(entry: {
 			category: entry.category as CatalogNode["category"],
 		}),
 	);
-	const glyph = TYPE_GLYPH[nodeType];
-	return glyph ? { ...group, glyph } : group;
+	return group;
 }
 
 const CATALOG_PRIORITY = ["python_caller"];
@@ -143,4 +161,43 @@ export function featuredCatalogNodes(nodes: CatalogNode[]): CatalogNode[] {
 	return sortCatalogNodes(
 		nodes.filter((node) => CATALOG_PRIORITY.includes(node.node_type)),
 	);
+}
+
+const SUBGROUP_ORDER = [
+	"Core",
+	"Popular",
+	"Data Transformation",
+	"Attribute Operations",
+	"Geometry & Quality",
+	"Spatial Analysis",
+	"Combiners",
+];
+
+export function catalogSubgroups(
+	nodes: CatalogNode[],
+): { id: string; title: string; nodes: CatalogNode[] }[] {
+	const buckets = new Map<string, CatalogNode[]>();
+	for (const node of nodes) {
+		const title =
+			node.node_type === "python_caller" || node.node_type === "code_node"
+				? "Popular"
+				: node.fme_group?.trim() || "Other";
+		const list = buckets.get(title) || [];
+		list.push(node);
+		buckets.set(title, list);
+	}
+	return Array.from(buckets.entries())
+		.sort(([left], [right]) => {
+			const li = SUBGROUP_ORDER.indexOf(left);
+			const ri = SUBGROUP_ORDER.indexOf(right);
+			const lRank = li === -1 ? 999 : li;
+			const rRank = ri === -1 ? 999 : ri;
+			if (lRank !== rRank) return lRank - rRank;
+			return left.localeCompare(right, "fr");
+		})
+		.map(([title, items]) => ({
+			id: title,
+			title,
+			nodes: sortCatalogNodes(items),
+		}));
 }

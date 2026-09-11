@@ -1,6 +1,7 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import type { FlowNodeData } from "../../lib/api";
 import { nodeChrome } from "../../lib/n8nCatalog";
+import { catalogEntryIcon, N8nIconBadge } from "../../lib/n8nIcons";
 import { useDagStore } from "../../store/dagStore";
 import { NodeActionBar } from "./NodeActionBar";
 
@@ -94,9 +95,15 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 						</span>
 					</Handle>
 				))}
-				<div className="n8n-node__icon" style={{ background: chrome.color }}>
-					{chrome.glyph}
-				</div>
+				<N8nIconBadge
+					icon={catalogEntryIcon({
+						node_type: payload.nodeType,
+						category: payload.category,
+					})}
+					color={chrome.color}
+					size={16}
+					className="n8n-node__icon"
+				/>
 				<strong className="n8n-node__label">{payload.label}</strong>
 				<span className="n8n-node__sub">{statusLabel(payload)}</span>
 				<button

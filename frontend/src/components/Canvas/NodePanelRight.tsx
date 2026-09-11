@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Search } from "../../lib/n8nIcons";
 import { matchesNodeSearch } from "../../config/nodeRegistry";
-import { featuredCatalogNodes, groupCatalog } from "../../lib/n8nCatalog";
+import {
+	groupCatalog,
+	type N8nGroupId,
+} from "../../lib/n8nCatalog";
 import { useDagStore } from "../../store/dagStore";
-import { NodePanelEntry } from "./NodePanelEntry";
+import { NodePanelCategoryAccordion } from "./NodePanelCategoryAccordion";
 
 export function NodePanelRight() {
 	const open = useDagStore((s) => s.nodePanelOpen);
@@ -12,11 +16,16 @@ export function NodePanelRight() {
 	const loadCatalog = useDagStore((s) => s.loadCatalog);
 	const pendingConnect = useDagStore((s) => s.pendingConnect);
 	const [query, setQuery] = useState("");
+	const [expandedGroups, setExpandedGroups] = useState<Set<N8nGroupId>>(
+		new Set(),
+	);
 	const searchRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
 		if (!open) return;
 		setQuery("");
+		// Une catégorie ouverte par défaut pour montrer l’accordéon (style n8n).
+		setExpandedGroups(new Set<N8nGroupId>(["data"]));
 		void loadCatalog();
 		const timer = window.setTimeout(() => searchRef.current?.focus(), 40);
 		return () => window.clearTimeout(timer);
@@ -31,16 +40,34 @@ export function NodePanelRight() {
 		return () => window.removeEventListener("keydown", onKey);
 	}, [open, closeNodePanel]);
 
-	const { featured, grouped } = useMemo(() => {
-		const needle = query.trim().toLowerCase();
-		const filtered = needle
-			? catalog.filter((entry) => matchesNodeSearch(entry, needle))
+	const searching = query.trim().length > 0;
+
+	const grouped = useMemo(() => {
+		const filtered = searching
+			? catalog.filter((entry) => matchesNodeSearch(entry, query))
 			: catalog;
-		return {
-			featured: needle ? [] : featuredCatalogNodes(catalog),
-			grouped: groupCatalog(filtered),
-		};
-	}, [catalog, query]);
+		return groupCatalog(filtered);
+	}, [catalog, query, searching]);
+
+	useEffect(() => {
+		if (!searching) return;
+		setExpandedGroups(
+			new Set(
+				grouped
+					.filter(({ nodes }) => nodes.length > 0)
+					.map(({ group }) => group.id),
+			),
+		);
+	}, [searching, grouped]);
+
+	const toggleGroup = (id: N8nGroupId) => {
+		setExpandedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
 
 	if (!open) return null;
 
@@ -52,17 +79,26 @@ export function NodePanelRight() {
 						{pendingConnect ? "Connecter un nœud" : "Ajouter un nœud"}
 					</p>
 					<h2>What happens next?</h2>
+					<p className="n8n-panel__hint">
+						Cliquez une catégorie pour l’ouvrir ou la fermer.
+					</p>
 				</div>
 				<button
 					type="button"
-					className="n8n-icon-btn"
+					className="n8n-icon-btn n8n-icon-btn--lucide"
 					onClick={closeNodePanel}
 					aria-label="Fermer le panneau"
 				>
-					×
+					<ArrowLeft size={20} strokeWidth={2} aria-hidden />
 				</button>
 			</header>
 			<div className="n8n-panel__search">
+				<Search
+					size={16}
+					strokeWidth={2}
+					className="n8n-panel__search-icon"
+					aria-hidden
+				/>
 				<input
 					ref={searchRef}
 					value={query}
@@ -71,48 +107,39 @@ export function NodePanelRight() {
 					aria-label="Search nodes"
 				/>
 			</div>
-			<div className="n8n-panel__list">
-				{featured.length ? (
-					<section className="n8n-panel__featured">
-						<h3>
-							<span style={{ background: "#7C3AED" }}>{"{}"}</span>
-							Code &amp; transformation
-						</h3>
-						<ul>
-							{featured.map((entry) => (
-								<NodePanelEntry
-									key={entry.node_type}
-									entry={entry}
-									accent="#7C3AED"
-									onSelect={insertNodeFromPanel}
-									subtitle="Éditeur Monaco · Python / SQL"
-								/>
-							))}
-						</ul>
-					</section>
+			<div className="n8n-panel__list n8n-panel__list--accordion">
+				{searching ? (
+					grouped.map(({ group, nodes }) =>
+						nodes.length === 0 ? null : (
+							<NodePanelCategoryAccordion
+								key={group.id}
+								group={group}
+								nodes={nodes}
+								expanded={expandedGroups.has(group.id)}
+								onToggle={() => toggleGroup(group.id)}
+								onSelectNode={insertNodeFromPanel}
+								defaultOpenSubgroups
+							/>
+						),
+					)
+				) : (
+					<>
+						{grouped.map(({ group, nodes }) => (
+							<NodePanelCategoryAccordion
+								key={group.id}
+								group={group}
+								nodes={nodes}
+								expanded={expandedGroups.has(group.id)}
+								onToggle={() => toggleGroup(group.id)}
+								onSelectNode={insertNodeFromPanel}
+							/>
+						))}
+					</>
+				)}
+				{searching &&
+				!grouped.some(({ nodes }) => nodes.length > 0) ? (
+					<p className="n8n-panel__empty">Aucun nœud ne correspond à la recherche.</p>
 				) : null}
-				{grouped.map(({ group, nodes }) => (
-					<section key={group.id}>
-						<h3>
-							<span style={{ background: group.color }}>{group.glyph}</span>
-							{group.title}
-						</h3>
-						{nodes.length === 0 ? (
-							<p className="n8n-panel__empty">Aucun nœud dans cette catégorie.</p>
-						) : (
-							<ul>
-								{nodes.map((entry) => (
-									<NodePanelEntry
-										key={entry.node_type}
-										entry={entry}
-										accent={group.color}
-										onSelect={insertNodeFromPanel}
-									/>
-								))}
-							</ul>
-						)}
-					</section>
-				))}
 			</div>
 		</aside>
 	);

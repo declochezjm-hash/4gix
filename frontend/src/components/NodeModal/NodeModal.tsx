@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { nodeChrome } from "../../lib/n8nCatalog";
+import { catalogEntryIcon, N8nIconBadge } from "../../lib/n8nIcons";
 import { useDagStore } from "../../store/dagStore";
 import { ConfigWindow } from "./ConfigWindow";
 import { InputWindow } from "./InputWindow";
@@ -38,12 +39,15 @@ export function NodeModal() {
 		<div className="n8n-modal" role="dialog" aria-modal="true">
 			<header className="n8n-modal__head">
 				<div className="n8n-modal__identity">
-					<span
+					<N8nIconBadge
+						icon={catalogEntryIcon({
+							node_type: node.data.nodeType,
+							category: node.data.category,
+						})}
+						color={chrome.color}
+						size={18}
 						className="n8n-modal__icon"
-						style={{ background: chrome.color }}
-					>
-						{chrome.glyph}
-					</span>
+					/>
 					<div>
 						<p className="n8n-panel__kicker">{node.data.category}</p>
 						<h2>{node.data.label}</h2>
