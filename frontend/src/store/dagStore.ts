@@ -1063,13 +1063,17 @@ export const useDagStore = create<DagState>((set, get) => ({
 				geotiff: "GeoTIFF",
 			};
 			const kind = typeLabels[payload.detected_type] || payload.detected_type;
+			const shpSoloHint =
+				file.name.toLowerCase().endsWith(".shp")
+					? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
+					: "";
 			set({
 				nodes: [...get().nodes, node],
 				selectedNodeId: node.id,
 				inspectorOpen: true,
 				nodePanelOpen: false,
 				error: null,
-				importNotice: `${kind} · ${file.name}`,
+				importNotice: `${kind} · ${file.name}${shpSoloHint}`,
 			});
 		} catch (err) {
 			set({

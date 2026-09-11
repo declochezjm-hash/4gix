@@ -1,13 +1,57 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import geopandas as gpd
 
-from app.core.config import settings
+from app.core.paths import resolve_workspace_path
 from app.core.readers.shapefile import shapefile_read_outputs
 from app.nodes.base import Base4GIxNode
+
+SHAPEFILE_SIDECAR = (".shx", ".dbf", ".prj", ".cpg")
+
+
+def _pick_shapefile_set(
+    sets: List[Dict[str, Any]],
+    layer_name: Optional[str],
+) -> Dict[str, Any]:
+    if not sets:
+        raise ValueError("Archive .zip sans Shapefile complet (.shp + .shx + .dbf).")
+    if layer_name:
+        key = layer_name.strip().lower()
+        for item in sets:
+            if item.get("layer_name", "").lower() == key:
+                return item
+            stem = Path(str(item.get("stem", ""))).name.lower()
+            if stem == key:
+                return item
+    return sets[0]
+
+
+def _read_shapefile_path(path: Path, encoding: Optional[str]) -> gpd.GeoDataFrame:
+    """Lit un .shp ; restaure .shx si absent (fichier .shp seul importé)."""
+    os.environ.setdefault("SHAPE_RESTORE_SHX", "YES")
+    kwargs: Dict[str, Any] = {}
+    if encoding:
+        kwargs["encoding"] = encoding
+    try:
+        return gpd.read_file(path, **kwargs)
+    except Exception as exc:
+        if path.suffix.lower() != ".shp":
+            raise
+        missing = [
+            ext
+            for ext in SHAPEFILE_SIDECAR
+            if ext in (".shx", ".dbf") and not path.with_suffix(ext).is_file()
+        ]
+        if missing:
+            raise ValueError(
+                f"Shapefile incomplet ({path.name}) : manque {', '.join(missing)}. "
+                "Glissez une archive .zip contenant .shp, .shx et .dbf (recommandé).",
+            ) from exc
+        raise
 
 
 class ShapefileReader(Base4GIxNode):
@@ -49,13 +93,13 @@ class ShapefileReader(Base4GIxNode):
         }
 
     def execute(self, inputs: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
-        raw_path = (params.get("path") or "").strip()
+        raw_path = (params.get("path") or params.get("zip_path") or "").strip()
         if not raw_path:
             raise ValueError("Paramètre `path` manquant pour Shapefile Reader.")
 
-        path = Path(raw_path)
-        if not path.is_absolute():
-            path = Path(settings.workspace_dir) / path
+        path = resolve_workspace_path(raw_path)
+        layer_name = (params.get("layer_name") or "").strip() or None
+        encoding = (params.get("encoding") or "").strip() or None
 
         if path.suffix.lower() == ".zip":
             from app.core.shapefile_import import (
@@ -66,11 +110,12 @@ class ShapefileReader(Base4GIxNode):
                 list_zip_entries,
             )
 
+            if not path.is_file():
+                raise FileNotFoundError(f"Archive Shapefile introuvable: {path}")
             entries = list_zip_entries(path.read_bytes())
             sets = discover_shapefile_sets(entries)
-            if not sets:
-                raise ValueError("Archive .zip sans Shapefile complet (.shp + .shx + .dbf).")
-            inner_shp = sets[0]["shp_path_in_zip"]
+            chosen = _pick_shapefile_set(sets, layer_name)
+            inner_shp = chosen["shp_path_in_zip"]
             shp_file = _extract_shapefile_sidecars(path, inner_shp)
             gdf = _read_geodataframe(shp_file)
             geojson, map_geojson, meta = _geojson_payload(gdf)
@@ -82,9 +127,11 @@ class ShapefileReader(Base4GIxNode):
             }
 
         if not path.is_file():
-            raise FileNotFoundError(f"Shapefile introuvable: {path}")
+            raise FileNotFoundError(
+                f"Shapefile introuvable: {path} (vérifiez le chemin /workspace ou réimportez le fichier).",
+            )
 
-        gdf = gpd.read_file(path, encoding=params.get("encoding") or None)
+        gdf = _read_shapefile_path(path, encoding)
         geojson, map_geojson, meta = shapefile_read_outputs(gdf)
         meta.update(
             {

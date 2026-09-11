@@ -104,6 +104,9 @@ def _extract_shapefile_sidecars(zip_path: Path, inner_shp: str) -> Path:
 
 
 def _read_geodataframe(shp_path: Path) -> gpd.GeoDataFrame:
+    import os
+
+    os.environ.setdefault("SHAPE_RESTORE_SHX", "YES")
     gdf = gpd.read_file(shp_path)
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:4326")
