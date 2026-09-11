@@ -8,7 +8,7 @@ from app.core.transformers.python_caller import (
     execute_code_transform,
 )
 from app.nodes.base import Base4GIxNode
-from app.nodes.fme_features import input_features
+from app.nodes.workflow_features import input_features
 
 
 class PythonCallerNode(Base4GIxNode):
@@ -18,7 +18,7 @@ class PythonCallerNode(Base4GIxNode):
     label = "Python / Code Transformer"
     description = "Éditeur de code Python (GeoPandas) ou SQL — style n8n Code node."
     output_handles = ["output", "rejected"]
-    fme_group = "Core"
+    palette_group = "Core"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

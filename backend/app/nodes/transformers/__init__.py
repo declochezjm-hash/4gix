@@ -39,7 +39,7 @@ from app.nodes.transformers.spatial_analysis import (
 from app.nodes.transformers.python_caller import CodeNode, PythonCallerNode
 from app.nodes.transformers.spatial_join import SpatialJoinNode
 
-FME_TRANSFORMERS = [
+PALETTE_TRANSFORMERS = [
     GeometryValidatorNode,
     GeometryFilterNode,
     SnapperNode,
@@ -74,5 +74,5 @@ __all__ = [
     "SpatialJoinNode",
     "RasterClipperNode",
     "ZonalStatisticsNode",
-    *[cls.__name__ for cls in FME_TRANSFORMERS],
+    *[cls.__name__ for cls in PALETTE_TRANSFORMERS],
 ]

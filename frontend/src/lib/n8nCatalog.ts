@@ -1,12 +1,6 @@
 import type { CatalogNode } from "./api";
 
-export type N8nGroupId =
-	| "ai"
-	| "data"
-	| "gis"
-	| "bim"
-	| "raster"
-	| "io";
+export type N8nGroupId = "ai" | "data" | "gis" | "bim" | "raster" | "io";
 
 export type N8nGroup = {
 	id: N8nGroupId;
@@ -107,7 +101,9 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	rest_wfs_reader: "io",
 };
 
-export function groupIdOf(entry: Pick<CatalogNode, "node_type" | "category">): N8nGroupId {
+export function groupIdOf(
+	entry: Pick<CatalogNode, "node_type" | "category">,
+): N8nGroupId {
 	if (TYPE_GROUP[entry.node_type]) return TYPE_GROUP[entry.node_type];
 	if (entry.category === "Reader" || entry.category === "Writer") return "io";
 	return "data";
@@ -181,7 +177,7 @@ export function catalogSubgroups(
 		const title =
 			node.node_type === "python_caller" || node.node_type === "code_node"
 				? "Popular"
-				: node.fme_group?.trim() || "Other";
+				: node.palette_group?.trim() || "Other";
 		const list = buckets.get(title) || [];
 		list.push(node);
 		buckets.set(title, list);

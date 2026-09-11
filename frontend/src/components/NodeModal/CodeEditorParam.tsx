@@ -10,7 +10,11 @@ const PYTHON_SNIPPETS = [
 	{ label: "gdf", detail: "GeoDataFrame", insertText: "gdf" },
 	{ label: "items", detail: "List[dict]", insertText: "items" },
 	{ label: "feature", detail: "GeoJSON Feature", insertText: "feature" },
-	{ label: "gdf.geometry.area", detail: "surface", insertText: "gdf.geometry.area" },
+	{
+		label: "gdf.geometry.area",
+		detail: "surface",
+		insertText: "gdf.geometry.area",
+	},
 	{
 		label: "return output_gdf",
 		detail: "retour flux",
@@ -80,15 +84,15 @@ export function CodeEditorParam({
 
 	const modeLabel = useMemo(
 		() =>
-			mode === "per_item"
-				? "Run for Each Item"
-				: "Run Once for All Items",
+			mode === "per_item" ? "Run for Each Item" : "Run Once for All Items",
 		[mode],
 	);
 
 	const switchLanguage = (nextLanguage: string) => {
 		const current = code.trim();
-		const patch: { language: string; code?: string } = { language: nextLanguage };
+		const patch: { language: string; code?: string } = {
+			language: nextLanguage,
+		};
 		if (
 			current === DEFAULT_PYTHON_CODE.trim() ||
 			current === DEFAULT_SQL_CODE.trim() ||

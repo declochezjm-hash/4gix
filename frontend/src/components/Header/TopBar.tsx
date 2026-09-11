@@ -32,7 +32,9 @@ export function TopBar() {
 				<span className="logo">4GIx</span>
 				<div>
 					<strong>Recflow Canvas</strong>
-					<small>ETL SIG natif · FME en lecture approximative (exécution sans FME)</small>
+					<small>
+						ETL SIG natif · import .fmw approximatif (exécution 100 % 4GIx)
+					</small>
 				</div>
 			</div>
 			<div className="topbar__actions">
@@ -45,7 +47,7 @@ export function TopBar() {
 
 				<input
 					type="file"
-					id="fme-file-input"
+					id="fmw-file-input"
 					ref={fileInputRef}
 					className="import-file-input"
 					accept=".fmw,.fmwt,.json,.4gix.json,.zip"
@@ -97,7 +99,7 @@ export function TopBar() {
 					onClick={() => void exportCurrentFmw()}
 					disabled={nodes.length === 0}
 				>
-					Export FME (.fmw)
+					Export (.fmw)
 				</button>
 				<button
 					type="button"
@@ -111,8 +113,8 @@ export function TopBar() {
 					<span
 						className={`status status--${String(lastExecution.status).toLowerCase()}`}
 					>
-						{lastExecution.status} · {Math.round(lastExecution.duration_ms)} ms ·{" "}
-						{lastExecution.node_count} nœuds
+						{lastExecution.status} · {Math.round(lastExecution.duration_ms)} ms
+						· {lastExecution.node_count} nœuds
 					</span>
 				) : (
 					<span className="status">{nodes.length} nœud(s)</span>
@@ -134,7 +136,7 @@ export function TopBar() {
 					className="run-btn"
 					onClick={() => void runDag()}
 					disabled={running || nodes.length === 0}
-					title="Exécute le graphe avec le moteur ETL 4GIx (PostGIS, transformers FME-like)"
+					title="Exécute le graphe avec le moteur ETL 4GIx (PostGIS, transformers SIG)"
 				>
 					{running ? "Exécution…" : "Execute workflow (4GIx)"}
 				</button>

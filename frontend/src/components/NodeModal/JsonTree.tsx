@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 type JsonTreeProps = {
 	data: unknown;
@@ -23,23 +23,20 @@ export function JsonTree({ data, name = "root", depth = 0 }: JsonTreeProps) {
 				preview={Array.isArray(data) ? `[${data.length}]` : "{…}"}
 			>
 				{Array.isArray(data)
-					? data.slice(0, 80).map((item, index) => (
-							<JsonTree
-								key={index}
-								name={String(index)}
-								data={item}
-								depth={depth + 1}
-							/>
-						))
+					? data
+							.slice(0, 80)
+							.map((item, index) => (
+								<JsonTree
+									key={index}
+									name={String(index)}
+									data={item}
+									depth={depth + 1}
+								/>
+							))
 					: Object.entries(data as Record<string, unknown>)
 							.filter(([key]) => key !== "preview_png_base64")
 							.map(([key, value]) => (
-								<JsonTree
-									key={key}
-									name={key}
-									data={value}
-									depth={depth + 1}
-								/>
+								<JsonTree key={key} name={key} data={value} depth={depth + 1} />
 							))}
 			</Branch>
 		);

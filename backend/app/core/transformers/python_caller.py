@@ -61,7 +61,7 @@ _SAFE_BUILTINS: Dict[str, Any] = {
 def crs_hint(features: List[Dict[str, Any]]) -> str:
     for feature in features:
         props = feature.get("properties") or {}
-        crs = props.get("fme_crs")
+        crs = props.get("gix_crs") or props.get("fme_crs")
         if crs:
             return str(crs)
     return "EPSG:4326"
@@ -210,7 +210,7 @@ def execute_sql_transform(
     code: str,
     mode: str,
 ) -> Dict[str, Any]:
-    from app.nodes.fme_features import ports_payload
+    from app.nodes.workflow_features import ports_payload
 
     try:
         if mode == "per_item":
@@ -261,7 +261,7 @@ def execute_code_transform(
 
 
 def error_payload(node_type: str, exc: BaseException) -> Dict[str, Any]:
-    from app.nodes.fme_features import feature_from_shapely, ports_payload
+    from app.nodes.workflow_features import feature_from_shapely, ports_payload
 
     rejected = [
         feature_from_shapely(
@@ -289,7 +289,7 @@ def execute_python_transform(
     code: str,
     mode: str,
 ) -> Dict[str, Any]:
-    from app.nodes.fme_features import ports_payload
+    from app.nodes.workflow_features import ports_payload
 
     items = [dict(feature.get("properties") or {}) for feature in features]
     try:

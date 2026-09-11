@@ -29,7 +29,7 @@ SAMPLE_GEOJSON = {
 }
 
 
-SAMPLE_FME_DEMO = {
+SAMPLE_WORKSPACE_DEMO = {
     "type": "FeatureCollection",
     "crs": {"type": "name", "properties": {"name": "EPSG:4326"}},
     "features": [
@@ -122,8 +122,8 @@ class GeoJSONReader(Base4GIxNode):
                 "sample_set": {
                     "type": "string",
                     "title": "Jeu d'exemple",
-                    "enum": ["cities", "regions", "fme_demo"],
-                    "enumNames": ["Villes (points)", "Régions (polygones)", "Démo FME (polygones + invalides)"],
+                    "enum": ["cities", "regions", "workspace_demo"],
+                    "enumNames": ["Villes (points)", "Régions (polygones)", "Démo qualité géométrique (polygones + invalides)"],
                     "default": "cities",
                 },
                 "path": {
@@ -161,8 +161,8 @@ class GeoJSONReader(Base4GIxNode):
         elif use_sample:
             if sample_set == "regions":
                 parsed = SAMPLE_REGIONS
-            elif sample_set == "fme_demo":
-                parsed = SAMPLE_FME_DEMO
+            elif sample_set in ("workspace_demo", "fme_demo"):
+                parsed = SAMPLE_WORKSPACE_DEMO
             else:
                 parsed = SAMPLE_GEOJSON
         else:

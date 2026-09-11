@@ -907,24 +907,24 @@ pre {
 	border-radius: 6px;
 	padding: 0.15rem 0.35rem;
 }
-.fme-inspector {
+.workflow-inspector {
 	display: grid;
 	gap: 0.55rem;
 }
-.fme-structure {
+.workflow-structure {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 0.35rem 0.6rem;
 	margin: 0;
 	font-size: 0.75rem;
 }
-.fme-structure dt {
+.workflow-structure dt {
 	color: var(--muted);
 }
-.fme-structure dd {
+.workflow-structure dd {
 	margin: 0.1rem 0 0;
 }
-.fme-filter {
+.workflow-filter {
 	width: 100%;
 	background: #141416;
 	border: 1px solid var(--line);

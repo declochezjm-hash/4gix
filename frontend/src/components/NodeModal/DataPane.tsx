@@ -35,9 +35,9 @@ export function DataPane({
 }: DataPaneProps) {
 	const raster = asRasterPreview(data);
 	const ports = listPorts(data);
-	const [tab, setTab] = useState<"schema" | "table" | "map" | "raster" | "fme">(
-		raster ? "raster" : "schema",
-	);
+	const [tab, setTab] = useState<
+		"schema" | "table" | "map" | "raster" | "features"
+	>(raster ? "raster" : "schema");
 	const [port, setPort] = useState<string>("");
 	const [filter, setFilter] = useState("");
 	const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -132,10 +132,10 @@ export function DataPane({
 					</button>
 					<button
 						type="button"
-						className={tab === "fme" ? "is-active" : ""}
-						onClick={() => setTab("fme")}
+						className={tab === "features" ? "is-active" : ""}
+						onClick={() => setTab("features")}
 					>
-						FME
+						Features
 					</button>
 					<button
 						type="button"
@@ -202,9 +202,9 @@ export function DataPane({
 				) : (
 					<div className="empty">Pas de géométrie GeoJSON à afficher.</div>
 				)
-			) : tab === "fme" ? (
-				<div className="fme-inspector">
-					<dl className="fme-structure">
+			) : tab === "features" ? (
+				<div className="workflow-inspector">
+					<dl className="workflow-structure">
 						<div>
 							<dt>Type de géométrie</dt>
 							<dd>{inspect.geomType}</dd>
@@ -212,7 +212,7 @@ export function DataPane({
 						<div>
 							<dt>Bounding Box</dt>
 							<dd>
-								{(mapBbox || inspect.bbox)
+								{mapBbox || inspect.bbox
 									? `[${(mapBbox || inspect.bbox)!.map((n) => n.toFixed(5)).join(", ")}]`
 									: "—"}
 							</dd>
@@ -244,7 +244,7 @@ export function DataPane({
 						</div>
 					) : null}
 					<input
-						className="fme-filter"
+						className="workflow-filter"
 						placeholder="Filtrer les attributs…"
 						value={filter}
 						onChange={(event) => setFilter(event.target.value)}
@@ -315,9 +315,7 @@ function AttributeTable({
 						{rows.map(({ row, index }) => (
 							<tr
 								key={index}
-								className={
-									selectedIndex === index ? "is-selected-feature" : ""
-								}
+								className={selectedIndex === index ? "is-selected-feature" : ""}
 								onClick={() => onSelectRow(index)}
 							>
 								{columns.map((column) => (

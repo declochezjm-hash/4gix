@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from app.core.paths import workspace_subdir
 from app.nodes.base import Base4GIxNode, _as_feature_collection, unwrap_input_data
-from app.nodes.fme_features import ports_payload
+from app.nodes.workflow_features import ports_payload
 
 
 class LogWriter(Base4GIxNode):
@@ -15,7 +15,7 @@ class LogWriter(Base4GIxNode):
     is_spatial = False
     label = "Log Writer"
     description = "Écrit le flux (ex. REJECTED) dans un journal JSON sous /workspace/logs."
-    fme_group = "Writers"
+    palette_group = "Writers"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

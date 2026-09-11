@@ -7,7 +7,7 @@ from shapely.geometry import LineString, MultiLineString
 from shapely.ops import polygonize, unary_union
 
 from app.nodes.base import Base4GIxNode
-from app.nodes.fme_features import (
+from app.nodes.workflow_features import (
     feature_from_shapely,
     input_features,
     ports_payload,
@@ -46,7 +46,7 @@ class BuffererNode(Base4GIxNode):
     is_spatial = True
     label = "Create Buffer"
     description = "Generate spatial proximity zones"
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -100,7 +100,7 @@ class ClipperNode(Base4GIxNode):
     description = "Découpe Inside / Outside par un masque polygonal."
     input_handles = ["input", "clipper"]
     output_handles = ["inside", "outside"]
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -149,7 +149,7 @@ class DissolverNode(Base4GIxNode):
     is_spatial = True
     label = "Merge Geometries"
     description = "Dissolve boundaries based on attributes"
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -191,7 +191,7 @@ class AreaOnAreaOverlayerNode(Base4GIxNode):
     is_spatial = True
     label = "Overlay Polygons"
     description = "Intersect and combine overlapping areas"
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -250,7 +250,7 @@ class LineOnLineOverlayerNode(Base4GIxNode):
     is_spatial = True
     label = "LineOnLineOverlayer"
     description = "Découpe un réseau de lignes à chaque intersection."
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -288,7 +288,7 @@ class CentroidExtractorNode(Base4GIxNode):
     is_spatial = True
     label = "CentroidExtractor"
     description = "Remplace chaque géométrie par son centroïde (CenterPointReplacer)."
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -325,7 +325,7 @@ class BoundingBoxReplacerNode(Base4GIxNode):
     is_spatial = True
     label = "Extract Bounding Box"
     description = "Replace geometry with envelope bounds"
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -348,7 +348,7 @@ class DensifierNode(Base4GIxNode):
     is_spatial = True
     label = "Densifier"
     description = "Ajoute des sommets intermédiaires selon une distance maximale (mètres)."
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -389,7 +389,7 @@ class GeneralizerNode(Base4GIxNode):
     is_spatial = True
     label = "Generalizer"
     description = "Simplification Douglas-Peucker / réduction de sommets."
-    fme_group = "Spatial Analysis"
+    palette_group = "Spatial Analysis"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

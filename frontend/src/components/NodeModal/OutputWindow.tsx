@@ -16,7 +16,7 @@ export function OutputWindow() {
 					: "Entités résultantes · MapLibre / Deck.gl 3D"
 			}
 			data={data}
-			empty="Aucune sortie. Execute Node pour inspecter fme_feature_type, attributs et géométrie."
+			empty="Aucune sortie. Execute Node pour inspecter le type d'entité, les attributs et la géométrie."
 			accent="#22C55E"
 			executionStatus={snapshot?.status}
 			dataKey={selectedNodeId ?? undefined}

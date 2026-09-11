@@ -336,7 +336,10 @@ export function ConfigWindow() {
 					</label>
 				</form>
 			) : isCodeNodeType(node.data.nodeType) ? (
-				<form className="config-form config-form--code" onSubmit={(e) => e.preventDefault()}>
+				<form
+					className="config-form config-form--code"
+					onSubmit={(e) => e.preventDefault()}
+				>
 					<CodeEditorParam
 						mode={String(node.data.params.mode ?? "all_items")}
 						language={String(node.data.params.language ?? "python")}

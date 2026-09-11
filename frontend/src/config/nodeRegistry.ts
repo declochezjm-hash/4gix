@@ -3,7 +3,7 @@ import type { CatalogNode } from "../lib/api";
 export type NodeRegistryEntry = {
 	displayName: string;
 	paletteDescription: string;
-	/** Noms FME / historiques — utilisés uniquement pour la recherche */
+	/** Alias historiques — utilisés uniquement pour la recherche */
 	searchTags: string[];
 };
 
@@ -12,17 +12,17 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 	attribute_manager: {
 		displayName: "Edit Fields",
 		paletteDescription: "Add, rename, remove or modify attributes",
-		searchTags: ["AttributeManager", "Attribute Manager", "FME"],
+		searchTags: ["AttributeManager", "Attribute Manager"],
 	},
 	counter: {
 		displayName: "Increment Counter",
 		paletteDescription: "Add sequence number or ID",
-		searchTags: ["Counter", "FME"],
+		searchTags: ["Counter"],
 	},
 	duplicate_filter: {
 		displayName: "Remove Duplicates",
 		paletteDescription: "Filter out identical records",
-		searchTags: ["DuplicateFilter", "Duplicate Filter", "FME"],
+		searchTags: ["DuplicateFilter", "Duplicate Filter"],
 	},
 	attribute_filter: {
 		displayName: "Filter by Attribute",
@@ -37,76 +37,72 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 	list_exploder: {
 		displayName: "Split List Array",
 		paletteDescription: "Flatten list attributes into features",
-		searchTags: ["ListExploder", "List Exploder", "FME"],
+		searchTags: ["ListExploder", "List Exploder"],
 	},
 	attribute_mapper: {
 		displayName: "Map Values",
 		paletteDescription: "Replace attribute values with lookup",
-		searchTags: [
-			"AttributeMapper",
-			"Mapping attributaire",
-			"Attribute Mapper",
-		],
+		searchTags: ["AttributeMapper", "Mapping attributaire", "Attribute Mapper"],
 	},
 	tester: {
 		displayName: "If / Filter Condition",
 		paletteDescription: "Validate conditions on feature fields",
-		searchTags: ["Tester", "Test", "FME"],
+		searchTags: ["Tester", "Test"],
 	},
 	test_filter: {
 		displayName: "Switch / Multi-Condition",
 		paletteDescription: "Route features based on rules",
-		searchTags: ["TestFilter", "Test Filter", "FME"],
+		searchTags: ["TestFilter", "Test Filter"],
 	},
 	area_on_area_overlayer: {
 		displayName: "Overlay Polygons",
 		paletteDescription: "Intersect and combine overlapping areas",
-		searchTags: ["AreaOnAreaOverlayer", "Area On Area Overlayer", "FME"],
+		searchTags: ["AreaOnAreaOverlayer", "Area On Area Overlayer"],
 	},
 	bounding_box_replacer: {
 		displayName: "Extract Bounding Box",
 		paletteDescription: "Replace geometry with envelope bounds",
-		searchTags: ["BoundingBoxReplacer", "Bounding Box Replacer", "FME"],
+		searchTags: ["BoundingBoxReplacer", "Bounding Box Replacer"],
 	},
 	buffer: {
 		displayName: "Create Buffer",
 		paletteDescription: "Generate spatial proximity zones",
-		searchTags: ["Buffer", "Bufferer", "FME"],
+		searchTags: ["Buffer", "Bufferer"],
 	},
 	bufferer: {
 		displayName: "Create Buffer",
 		paletteDescription: "Generate spatial proximity zones",
-		searchTags: ["Bufferer", "Buffer", "FME"],
+		searchTags: ["Bufferer", "Buffer"],
 	},
 	dissolver: {
 		displayName: "Merge Geometries",
 		paletteDescription: "Dissolve boundaries based on attributes",
-		searchTags: ["Dissolver", "FME"],
+		searchTags: ["Dissolver"],
 	},
 	geometry_validator: {
 		displayName: "Validate Geometry",
 		paletteDescription: "Detect and repair invalid shapes",
-		searchTags: ["GeometryValidator", "Geometry Validator", "FME"],
+		searchTags: ["GeometryValidator", "Geometry Validator"],
 	},
 	spatial_relator: {
 		displayName: "Spatial Join / Intersect",
 		paletteDescription: "Match features by location",
-		searchTags: ["SpatialRelator", "SpatialFilter", "Spatial Relator", "FME"],
+		searchTags: ["SpatialRelator", "SpatialFilter", "Spatial Relator"],
 	},
 	spatial_join: {
 		displayName: "Spatial Join / Intersect",
 		paletteDescription: "Match features by location",
-		searchTags: ["Spatial Join", "SpatialJoin", "FME"],
+		searchTags: ["Spatial Join", "SpatialJoin"],
 	},
 	reprojector: {
 		displayName: "Transform Coordinate System",
 		paletteDescription: "Reproject spatial reference CRS",
-		searchTags: ["Reprojector", "Reproject", "CRS", "FME"],
+		searchTags: ["Reprojector", "Reproject", "CRS"],
 	},
 	reproject: {
 		displayName: "Transform Coordinate System",
 		paletteDescription: "Reproject spatial reference CRS",
-		searchTags: ["Reproject", "Reprojection", "Reprojector", "FME"],
+		searchTags: ["Reproject", "Reprojection", "Reprojector"],
 	},
 	python_caller: {
 		displayName: "Code",
@@ -123,67 +119,67 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 	clipper: {
 		displayName: "Clip Features",
 		paletteDescription: "Split features inside and outside a clip mask",
-		searchTags: ["Clipper", "Clip", "FME"],
+		searchTags: ["Clipper", "Clip"],
 	},
 	centroid_extractor: {
 		displayName: "Extract Centroid",
 		paletteDescription: "Replace geometries with their center points",
-		searchTags: ["CentroidExtractor", "Centroid", "FME"],
+		searchTags: ["CentroidExtractor", "Centroid"],
 	},
 	line_on_line_overlayer: {
 		displayName: "Split Lines at Intersections",
 		paletteDescription: "Break line networks where they cross",
-		searchTags: ["LineOnLineOverlayer", "FME"],
+		searchTags: ["LineOnLineOverlayer"],
 	},
 	densifier: {
 		displayName: "Densify Geometry",
 		paletteDescription: "Add vertices along lines at a fixed spacing",
-		searchTags: ["Densifier", "FME"],
+		searchTags: ["Densifier"],
 	},
 	generalizer: {
 		displayName: "Simplify Geometry",
 		paletteDescription: "Reduce vertices while preserving shape",
-		searchTags: ["Generalizer", "Douglas-Peucker", "FME"],
+		searchTags: ["Generalizer", "Douglas-Peucker"],
 	},
 	geometry_filter: {
 		displayName: "Filter by Geometry Type",
 		paletteDescription: "Route features by point, line, or polygon",
-		searchTags: ["GeometryFilter", "Geometry Filter", "FME"],
+		searchTags: ["GeometryFilter", "Geometry Filter"],
 	},
 	snapper: {
 		displayName: "Snap Vertices",
 		paletteDescription: "Align vertices to a tolerance grid",
-		searchTags: ["Snapper", "FME"],
+		searchTags: ["Snapper"],
 	},
 	orientor: {
 		displayName: "Orient Polygons",
 		paletteDescription: "Normalize ring orientation (clockwise / CCW)",
-		searchTags: ["Orientor", "FME"],
+		searchTags: ["Orientor"],
 	},
 	feature_merger: {
 		displayName: "Merge Features",
 		paletteDescription: "Join request and supplier streams by key",
-		searchTags: ["FeatureMerger", "Feature Merger", "FME"],
+		searchTags: ["FeatureMerger", "Feature Merger"],
 	},
 	neighbor_finder: {
 		displayName: "Find Neighbors",
 		paletteDescription: "Locate nearest features between two layers",
-		searchTags: ["NeighborFinder", "FME"],
+		searchTags: ["NeighborFinder"],
 	},
 	shapefile_reader: {
 		displayName: "Read Shapefile",
 		paletteDescription: "Import ESRI Shapefile or .zip archive",
-		searchTags: ["Shapefile", "Shapefile Reader", "FME"],
+		searchTags: ["Shapefile", "Shapefile Reader"],
 	},
 	geojson_reader: {
 		displayName: "Read GeoJSON",
 		paletteDescription: "Load GeoJSON features from workspace",
-		searchTags: ["GeoJSON", "FME"],
+		searchTags: ["GeoJSON"],
 	},
 	postgis_reader: {
 		displayName: "Read PostGIS",
 		paletteDescription: "Query spatial tables from PostgreSQL",
-		searchTags: ["PostGIS", "FME"],
+		searchTags: ["PostGIS"],
 	},
 };
 
@@ -197,10 +193,7 @@ function humanizeLabel(label: string): string {
 		.join(" ");
 }
 
-export function paletteSubtitle(
-	entry: CatalogNode,
-	override?: string,
-): string {
+export function paletteSubtitle(entry: CatalogNode, override?: string): string {
 	if (override?.trim()) return override;
 	const pres = nodePresentation(entry);
 	if (pres.paletteDescription.trim()) return pres.paletteDescription;
@@ -228,11 +221,7 @@ export function nodePresentation(
 			.toLowerCase();
 		return { ...mapped, searchBlob };
 	}
-	const searchBlob = [
-		entry.label,
-		entry.node_type,
-		entry.description || "",
-	]
+	const searchBlob = [entry.label, entry.node_type, entry.description || ""]
 		.join(" ")
 		.toLowerCase();
 	return {
@@ -246,10 +235,7 @@ export function nodePresentation(
 	};
 }
 
-export function matchesNodeSearch(
-	entry: CatalogNode,
-	query: string,
-): boolean {
+export function matchesNodeSearch(entry: CatalogNode, query: string): boolean {
 	const needle = query.trim().toLowerCase();
 	if (!needle) return true;
 	return nodePresentation(entry).searchBlob.includes(needle);

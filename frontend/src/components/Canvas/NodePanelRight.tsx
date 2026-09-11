@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Search } from "../../lib/n8nIcons";
 import { matchesNodeSearch } from "../../config/nodeRegistry";
-import {
-	groupCatalog,
-	type N8nGroupId,
-} from "../../lib/n8nCatalog";
+import { groupCatalog, type N8nGroupId } from "../../lib/n8nCatalog";
+import { ArrowLeft, Search } from "../../lib/n8nIcons";
 import { useDagStore } from "../../store/dagStore";
 import { NodePanelCategoryAccordion } from "./NodePanelCategoryAccordion";
 
@@ -136,9 +133,10 @@ export function NodePanelRight() {
 						))}
 					</>
 				)}
-				{searching &&
-				!grouped.some(({ nodes }) => nodes.length > 0) ? (
-					<p className="n8n-panel__empty">Aucun nœud ne correspond à la recherche.</p>
+				{searching && !grouped.some(({ nodes }) => nodes.length > 0) ? (
+					<p className="n8n-panel__empty">
+						Aucun nœud ne correspond à la recherche.
+					</p>
 				) : null}
 			</div>
 		</aside>

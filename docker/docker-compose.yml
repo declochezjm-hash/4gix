@@ -44,8 +44,8 @@ services:
       FOURGIX_POSTGIS_USER: 4gix_user
       FOURGIX_POSTGIS_PASSWORD: 4gix_password
       FOURGIX_POSTGIS_DB: 4gix_db
-      # Chemin fme.exe (API Windows native). Inopérant dans le conteneur Linux sauf FME Linux.
-      FOURGIX_FME_EXECUTABLE: ""
+      # Chemin exécutable .fmw externe (API Windows native). Vide = désactivé dans le conteneur Linux.
+      FOURGIX_FMW_EXECUTABLE: ""
     ports:
       - "8000:8000"
     volumes:

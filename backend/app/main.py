@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.execution import router as execution_router
 from app.api.shapefile_import import router as shapefile_import_router
 from app.api.v1.router import router as api_v1_router
-from app.api.fme_workflows import router as fme_workflows_router
+from app.api.fmw_workflows import router as fmw_workflows_router
 from app.api.nodes_catalog import router as catalog_router
 from app.api.workflows import router as workflows_router
 from app.core.config import settings
@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine, FME Workbench, BIM, raster et WFS.",
+    description="Socle local ETL/ELT géospatial 4GIx — Recflow Engine, import .fmw, BIM, raster et WFS.",
     version="0.4.0",
     lifespan=lifespan,
 )
@@ -39,7 +39,7 @@ app.add_middleware(
 app.include_router(execution_router)
 app.include_router(catalog_router)
 app.include_router(workflows_router)
-app.include_router(fme_workflows_router)
+app.include_router(fmw_workflows_router)
 app.include_router(shapefile_import_router)
 app.include_router(api_v1_router)
 

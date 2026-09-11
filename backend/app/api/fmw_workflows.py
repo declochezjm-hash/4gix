@@ -10,16 +10,16 @@ from fastapi.responses import PlainTextResponse
 
 from app.core import persistence
 from app.core.config import settings
-from app.core.fme_project_parser import export_fmw, parse_fmw_bytes
-from app.core.fme_runner import FmeRunnerError, fme_executable_path, run_fmw_workspace
+from app.core.fmw_project_parser import export_fmw, parse_fmw_bytes
+from app.core.fmw_runner import FmwRunnerError, fmw_executable_path, run_fmw_workspace
 
-router = APIRouter(prefix="/api/v1", tags=["fme-workflows"])
+router = APIRouter(prefix="/api/v1", tags=["fmw-workflows"])
 
 
-@router.get("/workflows/fme-engine")
-def fme_engine_status() -> Dict[str, Any]:
-    """Optionnel — 4GIx n'exige pas FME pour exécuter l'ETL importé."""
-    exe = fme_executable_path()
+@router.get("/workflows/fmw-engine")
+def fmw_engine_status() -> Dict[str, Any]:
+    """Optionnel — 4GIx n'exige pas un moteur externe pour exécuter l'ETL importé."""
+    exe = fmw_executable_path()
     return {
         "required": False,
         "configured": bool(exe),
@@ -27,7 +27,7 @@ def fme_engine_status() -> Dict[str, Any]:
         "execution_default": "4gix_native",
         "hint": (
             "L'exécution standard se fait via le moteur 4GIx (Execute workflow). "
-            "FME Desktop n'est requis que pour convertir un .fmw opaque une seule fois."
+            "Un exécutable .fmw externe n'est requis que pour convertir un fichier opaque une seule fois."
         ),
     }
 
@@ -52,7 +52,7 @@ async def import_fmw(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 @router.post("/workflows/execute-fmw")
 async def execute_fmw(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Optionnel : exécution fme.exe si installé (non requis pour 4GIx)."""
+    """Optionnel : exécution via exécutable .fmw si configuré (non requis pour 4GIx)."""
     if not file.filename or not file.filename.lower().endswith((".fmw", ".fmwt")):
         raise HTTPException(status_code=400, detail="Fichier attendu: .fmw ou .fmwt")
     raw = await file.read()
@@ -70,14 +70,14 @@ async def execute_fmw(file: UploadFile = File(...)) -> Dict[str, Any]:
             return {
                 **run_fmw_workspace(target),
                 "name": file.filename.rsplit(".", 1)[0],
-                "source": "fme_engine",
+                "source": "fmw_external",
             }
-        except FmeRunnerError as exc:
+        except FmwRunnerError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except subprocess.TimeoutExpired as exc:
             raise HTTPException(
                 status_code=504,
-                detail="Exécution FME expirée (timeout).",
+                detail="Exécution .fmw expirée (timeout).",
             ) from exc
     finally:
         try:

@@ -18,7 +18,7 @@ import networkx as nx
 
 from app.nodes import get_node_class
 from app.nodes.base import NodeSnapshot, build_snapshot_from_payload, snapshot_payload
-from app.nodes.fme_features import extract_port, normalize_handle, stamp_payload
+from app.nodes.workflow_features import extract_port, normalize_handle, stamp_payload
 
 try:
     from app.core import persistence

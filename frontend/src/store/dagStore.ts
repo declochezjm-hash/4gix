@@ -13,24 +13,24 @@ import { create } from "zustand";
 import { enrichCatalog } from "../config/nodeRegistry";
 import {
 	type CatalogNode,
+	type DataUploadResult,
+	downloadExportFmw,
 	type ExecutionResult,
 	type FlowNodeData,
 	type FmwImportResult,
 	fetchCatalog,
 	fetchNodeSnapshot,
 	fetchWorkflows,
-	type MapViewState,
-	type NodeSnapshot,
-	saveWorkflow,
-	type WorkflowRecord,
-	wsExecuteUrl,
 	importFmwFile,
-	downloadExportFmw,
 	isFmwFilename,
 	isShapefileZipFilename,
 	isSpatialDataFilename,
+	type MapViewState,
+	type NodeSnapshot,
+	saveWorkflow,
 	uploadDataFile,
-	type DataUploadResult,
+	type WorkflowRecord,
+	wsExecuteUrl,
 	zipLooksLikeShapefile,
 } from "../lib/api";
 
@@ -160,7 +160,10 @@ function activeEdges(edges: Edge[], nodes: Node<FlowNodeData>[]) {
 	);
 }
 
-function topologicalLayers(nodes: Node<FlowNodeData>[], edges: Edge[]): Map<string, number> {
+function topologicalLayers(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+): Map<string, number> {
 	const ids = new Set(nodes.map((node) => node.id));
 	const incoming = new Map<string, string[]>();
 	for (const id of ids) incoming.set(id, []);
@@ -237,7 +240,7 @@ function buildNode(entry: CatalogNode, position: { x: number; y: number }) {
 			status: "idle",
 			inputHandles: entry.input_handles || ["input"],
 			outputHandles: entry.output_handles || ["output"],
-			fmeGroup: entry.fme_group || "",
+			paletteGroup: entry.palette_group || "",
 			notes: "",
 			disabled: false,
 		},
@@ -497,9 +500,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			get,
 			set,
 			nodes.filter((node) => keep.has(node.id)),
-			edges.filter(
-				(edge) => keep.has(edge.source) && keep.has(edge.target),
-			),
+			edges.filter((edge) => keep.has(edge.source) && keep.has(edge.target)),
 		);
 	},
 
@@ -513,8 +514,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			edges: get().edges.filter(
 				(edge) => edge.source !== id && edge.target !== id,
 			),
-			selectedNodeId:
-				get().selectedNodeId === id ? null : get().selectedNodeId,
+			selectedNodeId: get().selectedNodeId === id ? null : get().selectedNodeId,
 			contextMenu: null,
 		}),
 
@@ -636,10 +636,10 @@ export const useDagStore = create<DagState>((set, get) => ({
 						...(node.data?.params || {}),
 					},
 					schema: node.data?.schema || entry?.schema,
-					inputHandles:
-						node.data?.inputHandles || entry?.input_handles || ["input"],
-					outputHandles:
-						node.data?.outputHandles || entry?.output_handles || ["output"],
+					inputHandles: node.data?.inputHandles ||
+						entry?.input_handles || ["input"],
+					outputHandles: node.data?.outputHandles ||
+						entry?.output_handles || ["output"],
 					status: "idle" as const,
 					disabled: false,
 				},
@@ -658,8 +658,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 			error: null,
 			importNotice:
 				payload.warnings?.length > 0
-					? `Import FME : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) · ${payload.warnings[0]}`
-					: `Import FME : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) chargés.`,
+					? `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) · ${payload.warnings[0]}`
+					: `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) chargés.`,
 		});
 	},
 
@@ -673,7 +673,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			get().loadImportedDefinition(payload);
 		} catch (err) {
 			set({
-				error: err instanceof Error ? err.message : "Import FME impossible.",
+				error: err instanceof Error ? err.message : "Import .fmw impossible.",
 				importNotice: null,
 			});
 		}
@@ -689,11 +689,11 @@ export const useDagStore = create<DagState>((set, get) => ({
 			await get().importDataFileFromDrop(file);
 			return;
 		}
-		if (
-			!lower.endsWith(".json") &&
-			!lower.endsWith(".4gix.json")
-		) {
-			set({ error: "Formats acceptés: .fmw, .fmwt, .json, .zip (Shapefile), .geojson, .tif" });
+		if (!lower.endsWith(".json") && !lower.endsWith(".4gix.json")) {
+			set({
+				error:
+					"Formats acceptés: .fmw, .fmwt, .json, .zip (Shapefile), .geojson, .tif",
+			});
 			return;
 		}
 		try {
@@ -720,8 +720,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			get().loadImportedDefinition(payload);
 		} catch (err) {
 			set({
-				error:
-					err instanceof Error ? err.message : "Import JSON impossible.",
+				error: err instanceof Error ? err.message : "Import JSON impossible.",
 			});
 		}
 	},
@@ -748,7 +747,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 			const payload: DataUploadResult = await uploadDataFile(file);
 			const suggested = payload.suggested_node;
 			if (!suggested?.node_type) {
-				throw new Error("Réponse serveur incomplète (suggested_node manquant).");
+				throw new Error(
+					"Réponse serveur incomplète (suggested_node manquant).",
+				);
 			}
 			const entry = get().catalog.find(
 				(item) => item.node_type === suggested.node_type,
@@ -776,8 +777,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 				geojson: "GeoJSON",
 				geotiff: "GeoTIFF",
 			};
-			const kind =
-				typeLabels[payload.detected_type] || payload.detected_type;
+			const kind = typeLabels[payload.detected_type] || payload.detected_type;
 			set({
 				nodes: [...get().nodes, node],
 				selectedNodeId: node.id,
@@ -789,9 +789,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 		} catch (err) {
 			set({
 				error:
-					err instanceof Error
-						? err.message
-						: "Import de données impossible.",
+					err instanceof Error ? err.message : "Import de données impossible.",
 				importNotice: null,
 			});
 		}
@@ -810,7 +808,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 		await get().saveCurrentWorkflow();
 		const workflowId = get().workflowId;
 		if (!workflowId) {
-			set({ error: "Enregistrez le workflow avant l'export FME." });
+			set({ error: "Enregistrez le workflow avant l'export .fmw." });
 			return;
 		}
 		try {
@@ -822,7 +820,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			set({ error: null });
 		} catch (err) {
 			set({
-				error: err instanceof Error ? err.message : "Export FME impossible.",
+				error: err instanceof Error ? err.message : "Export .fmw impossible.",
 			});
 		}
 	},
@@ -832,7 +830,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 
 async function executeViaSocket(
 	get: () => DagState,
-	set: (partial: Partial<DagState> | ((state: DagState) => Partial<DagState>)) => void,
+	set: (
+		partial: Partial<DagState> | ((state: DagState) => Partial<DagState>),
+	) => void,
 	subsetNodes?: Node<FlowNodeData>[],
 	subsetEdges?: Edge[],
 ) {

@@ -1,4 +1,4 @@
-"""Entités et ports style FME Workbench pour Recflow."""
+"""Entités multi-ports et métadonnées feature pour Recflow."""
 
 from __future__ import annotations
 
@@ -10,7 +10,26 @@ from shapely.geometry.base import BaseGeometry
 
 from app.nodes.base import _as_feature_collection, _preview_limit
 
-FME_ATTRS = ("fme_feature_type", "fme_geometry", "fme_crs", "fme_rejection_code")
+GIX_FEATURE_ATTRS = (
+    "gix_feature_type",
+    "gix_geometry",
+    "gix_crs",
+    "gix_rejection_code",
+)
+_LEGACY_FEATURE_ATTRS = (
+    "fme_feature_type",
+    "fme_geometry",
+    "fme_crs",
+    "fme_rejection_code",
+)
+
+
+def _prop(props: Dict[str, Any], key: str, legacy: str, default: Any = None) -> Any:
+    if props.get(key) is not None:
+        return props.get(key)
+    if props.get(legacy) is not None:
+        return props.get(legacy)
+    return default
 
 HANDLE_ALIASES = {
     "output": "output",
@@ -89,13 +108,14 @@ def stamp_feature(
 ) -> Dict[str, Any]:
     props = dict(feature.get("properties") or {})
     gtype = geom_type_of(feature)
-    props.setdefault("fme_feature_type", feature_type or props.get("fme_feature_type") or "feature")
-    props["fme_geometry"] = gtype
-    props.setdefault("fme_crs", crs or props.get("fme_crs") or "EPSG:4326")
+    ft = feature_type or _prop(props, "gix_feature_type", "fme_feature_type") or "feature"
+    props["gix_feature_type"] = ft
+    props["gix_geometry"] = gtype
+    props["gix_crs"] = crs or _prop(props, "gix_crs", "fme_crs") or "EPSG:4326"
     if rejection_code:
-        props["fme_rejection_code"] = rejection_code
-    elif "fme_rejection_code" not in props:
-        props["fme_rejection_code"] = None
+        props["gix_rejection_code"] = rejection_code
+    elif "gix_rejection_code" not in props:
+        props["gix_rejection_code"] = _prop(props, "gix_rejection_code", "fme_rejection_code")
     return {"type": "Feature", "properties": props, "geometry": feature.get("geometry")}
 
 
@@ -162,7 +182,7 @@ def ports_payload(
             primary_handle = "output"
     metadata = {
         "kind": "vector",
-        "fme_ports": True,
+        "multi_port": True,
         "port_counts": counts,
         "crs": crs,
         "feature_count": counts.get(primary_handle, 0),

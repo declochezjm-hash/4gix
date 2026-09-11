@@ -6,7 +6,7 @@ from shapely.ops import transform as shp_transform
 from shapely.validation import explain_validity, make_valid
 
 from app.nodes.base import Base4GIxNode
-from app.nodes.fme_features import (
+from app.nodes.workflow_features import (
     feature_from_shapely,
     input_features,
     ports_payload,
@@ -34,7 +34,7 @@ class GeometryValidatorNode(Base4GIxNode):
     label = "Validate Geometry"
     description = "Detect and repair invalid shapes"
     output_handles = ["output", "rejected"]
-    fme_group = "Geometry & Quality"
+    palette_group = "Geometry & Quality"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -98,7 +98,7 @@ class GeometryFilterNode(Base4GIxNode):
     label = "GeometryFilter"
     description = "Sépare le flux par type de géométrie (Point, Line, Polygon, MultiPolygon, Null)."
     output_handles = ["point", "linestring", "polygon", "multipolygon", "null"]
-    fme_group = "Geometry & Quality"
+    palette_group = "Geometry & Quality"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -126,7 +126,7 @@ class SnapperNode(Base4GIxNode):
     is_spatial = True
     label = "Snapper"
     description = "Calage des sommets sur une grille de tolérance (mètres)."
-    fme_group = "Geometry & Quality"
+    palette_group = "Geometry & Quality"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -160,7 +160,7 @@ class OrientorNode(Base4GIxNode):
     is_spatial = True
     label = "Orientor"
     description = "Uniformise l'orientation des anneaux (horaire / anti-horaire)."
-    fme_group = "Geometry & Quality"
+    palette_group = "Geometry & Quality"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

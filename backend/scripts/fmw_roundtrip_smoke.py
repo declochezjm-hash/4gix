@@ -1,11 +1,11 @@
-"""Smoke test import → export → re-import FME (.fmw). Run inside the API container."""
+"""Smoke test import → export → re-import (.fmw). Run inside the API container."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-from app.core.fme_project_parser import export_fmw, parse_fmw
+from app.core.fmw_project_parser import export_fmw, parse_fmw
 
 
 def main() -> int:

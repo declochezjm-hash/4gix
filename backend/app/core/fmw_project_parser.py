@@ -1,4 +1,4 @@
-"""Import / export FME Workbench (.fmw / .fmwt) vers le graphe 4GIx."""
+"""Import / export workspace (.fmw / .fmwt) vers le graphe 4GIx."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.nodes import NODE_REGISTRY, list_catalog
 
-# FME factory / transformer name → node_type 4GIx
-FME_TO_4GIX: Dict[str, str] = {
+# Nom factory / transformer → node_type 4GIx
+FMW_FACTORY_TO_NODE: Dict[str, str] = {
     "geometryvalidator": "geometry_validator",
     "geometryfilter": "geometry_filter",
     "snapper": "snapper",
@@ -76,7 +76,7 @@ FME_TO_4GIX: Dict[str, str] = {
     "spatialfilterfactory": "spatial_relator",
 }
 
-FOURGIX_TO_FME: Dict[str, str] = {
+NODE_TO_FMW_FACTORY: Dict[str, str] = {
     "geometry_validator": "GeometryValidator",
     "geometry_filter": "GeometryFilter",
     "snapper": "Snapper",
@@ -159,10 +159,10 @@ FACTORY_CLASS_HINT = {
 
 FALLBACK_NODE_TYPE = "attribute_manager"
 
-FME_ENCRYPTED_HINT = (
+FMW_ENCRYPTED_HINT = (
     "Impossible d'extraire des transformateurs de ce fichier (FMW0001 souvent chiffré). "
-    "One-shot : ouvrir dans FME et « Save As » .fmw texte, ou exporter un JSON 4GIx. "
-    "Sinon, recréez le flux avec la palette — l'exécution reste 100 % 4GIx, sans FME."
+    "One-shot : ouvrir dans l'éditeur d'origine et « Save As » .fmw texte, ou exporter un JSON 4GIx. "
+    "Sinon, recréez le flux avec la palette — l'exécution reste 100 % 4GIx, en natif."
 )
 
 
@@ -303,10 +303,10 @@ def _resolve_node_type(
         mapped = map_fme_type("geojson_reader")
         if mapped:
             return mapped
-    safe_type = _sanitize_label(fme_type, fallback="FME")
+    safe_type = _sanitize_label(fme_type, fallback="Workbench")
     safe_label = _sanitize_label(label, fallback=safe_type)
     warnings.append(
-        f"Type FME non mappé: {safe_type} ({safe_label}) → {FALLBACK_NODE_TYPE}",
+        f"Type factory non mappé: {safe_type} ({safe_label}) → {FALLBACK_NODE_TYPE}",
     )
     return FALLBACK_NODE_TYPE
 
@@ -321,8 +321,8 @@ def _normalize_fme_type(raw: str) -> str:
 
 def map_fme_type(fme_type: str) -> Optional[str]:
     key = _normalize_fme_type(fme_type)
-    if key in FME_TO_4GIX:
-        mapped = FME_TO_4GIX[key]
+    if key in FMW_FACTORY_TO_NODE:
+        mapped = FMW_FACTORY_TO_NODE[key]
         if mapped in NODE_REGISTRY:
             return mapped
     for node_type in NODE_REGISTRY:
@@ -423,7 +423,7 @@ def _build_flow_node(
             "status": "idle",
             "inputHandles": entry.get("input_handles") or ["input"],
             "outputHandles": entry.get("output_handles") or ["output"],
-            "fmeGroup": entry.get("fme_group") or "",
+            "paletteGroup": entry.get("palette_group") or "",
             "notes": "",
             "disabled": False,
         },
@@ -687,7 +687,7 @@ def _parse_workspace_xml(xml: str, catalog: Dict[str, dict]) -> Tuple[List[dict]
         pos = pos_raw if pos_raw else (120.0, 120.0)
         node_type = map_fme_type(fme_type)
         if not node_type:
-            warnings.append(f"Type FME non mappé: {fme_type} ({inst})")
+            warnings.append(f"Type factory non mappé: {fme_type} ({inst})")
             continue
         gix_id = _make_gix_id(node_type, str(fme_id), used_ids)
         id_map[str(fme_id)] = gix_id
@@ -907,7 +907,7 @@ def _infer_mapping_edges(text: str, name_to_gix: Dict[str, str]) -> List[dict]:
     return edges
 
 
-def parse_fmw(content: str, *, default_name: str = "Import FME") -> Dict[str, Any]:
+def parse_fmw(content: str, *, default_name: str = "Import .fmw") -> Dict[str, Any]:
     catalog = _catalog_index()
     text_format = detect_fmw_text_format(content)
     name = default_name
@@ -955,11 +955,11 @@ def parse_fmw(content: str, *, default_name: str = "Import FME") -> Dict[str, An
                 warnings.append(f"XML workspace invalide: {exc}")
 
     if not nodes:
-        raise ValueError(FME_ENCRYPTED_HINT)
+        raise ValueError(FMW_ENCRYPTED_HINT)
 
     if text_format == "json":
         warnings.append(
-            "Format JSON FME détecté — import partiel ; préférez un .fmw XML exporté depuis Workbench.",
+            "Format JSON Workbench détecté — import partiel ; préférez un .fmw XML exporté depuis l'éditeur d'origine.",
         )
 
     if positions_from_source:
@@ -968,7 +968,7 @@ def parse_fmw(content: str, *, default_name: str = "Import FME") -> Dict[str, An
         _layout_hierarchical(nodes, edges)
 
     if not edges and len(nodes) > 1:
-        warnings.append("Aucune connexion FME détectée — vérifiez FEAT_LINK / ROUTED_TO.")
+        warnings.append("Aucune connexion workspace détectée — vérifiez FEAT_LINK / ROUTED_TO.")
 
     return {
         "name": name,
@@ -1050,10 +1050,10 @@ def _loose_binary_text(raw: bytes) -> str:
 
 
 def _binary_dictionary_terms() -> List[str]:
-    terms: Set[str] = set(FOURGIX_TO_FME.values())
+    terms: Set[str] = set(NODE_TO_FMW_FACTORY.values())
     terms.update(
         name
-        for name in FME_TO_4GIX.keys()
+        for name in FMW_FACTORY_TO_NODE.keys()
         if len(name) >= 5 and name.isascii()
     )
     terms.update(
@@ -1111,7 +1111,7 @@ def _extract_labels_after_wide_marker(raw: bytes, marker: str) -> List[str]:
 
 
 def _scan_raw_binary_labels(raw: bytes) -> List[Tuple[str, str]]:
-    """Repère des libellés FME directement dans les octets (ASCII + UTF-16)."""
+    """Repère des libellés factory directement dans les octets (ASCII + UTF-16)."""
     found: List[Tuple[str, str]] = []
     seen: Set[str] = set()
 
@@ -1180,7 +1180,7 @@ def _nodes_from_binary_scan(
     catalog: Dict[str, dict],
 ) -> Tuple[List[dict], List[dict], List[str]]:
     warnings: List[str] = [
-        "Signatures FME détectées dans le binaire (scan octets) — graphe approximatif.",
+        "Signatures factory détectées dans le binaire (scan octets) — graphe approximatif.",
     ]
     nodes: List[dict] = []
     used_ids: Set[str] = set()
@@ -1232,7 +1232,7 @@ def _skeleton_pipeline_from_name(
     catalog: Dict[str, dict],
 ) -> Tuple[List[dict], List[dict], List[str]]:
     warnings = [
-        "FMW0001 / workspace chiffré — contenu illisible sans FME. "
+        "FMW0001 / workspace chiffré — contenu illisible sans outil propriétaire. "
         "Squelette ETL 4GIx créé à partir du nom du fichier : complétez sources, "
         "paramètres et liens puis « Execute workflow (4GIx) ».",
     ]
@@ -1290,9 +1290,9 @@ def _parse_loose_fme_signatures(
     text: str,
     catalog: Dict[str, dict],
 ) -> Tuple[List[dict], List[dict], List[str]]:
-    """Heuristique sur texte reconstruit depuis un .fmw binaire (sans déchiffrement FME)."""
+    """Heuristique sur texte reconstruit depuis un .fmw binaire (sans déchiffrement propriétaire)."""
     warnings: List[str] = [
-        "Fichier FME binaire — graphe reconstruit par heuristique ; vérifiez nœuds et liens, "
+        "Fichier .fmw binaire — graphe reconstruit par heuristique ; vérifiez nœuds et liens, "
         "puis « Execute workflow (4GIx) ».",
     ]
     nodes: List[dict] = []
@@ -1416,7 +1416,7 @@ def _recover_fmw_from_binary(
         return None
     _layout_hierarchical(nodes, edges)
     intro = (
-        "Graphe approximé pour le moteur ETL 4GIx (aucun FME Desktop requis à l'exécution)."
+        "Graphe approximé pour le moteur ETL 4GIx (aucun moteur externe requis à l'exécution)."
     )
     return {
         "name": default_name,
@@ -1429,12 +1429,12 @@ def _recover_fmw_from_binary(
     }
 
 
-def parse_fmw_bytes(raw: bytes, *, default_name: str = "Import FME") -> Dict[str, Any]:
-    """Import multi-stratégies sans FME Desktop — graphe approximé pour ETL 4GIx."""
+def parse_fmw_bytes(raw: bytes, *, default_name: str = "Import .fmw") -> Dict[str, Any]:
+    """Import multi-stratégies sans moteur externe — graphe approximé pour ETL 4GIx."""
     if not raw:
         raise ValueError("Fichier vide.")
     intro = (
-        "Graphe approximé pour le moteur ETL 4GIx (aucun FME Desktop requis à l'exécution)."
+        "Graphe approximé pour le moteur ETL 4GIx (aucun moteur externe requis à l'exécution)."
     )
     last_error: Optional[ValueError] = None
     for text in _decode_variants(raw):
@@ -1459,7 +1459,7 @@ def parse_fmw_bytes(raw: bytes, *, default_name: str = "Import FME") -> Dict[str
         catalog = _catalog_index()
         nodes, edges, warnings = _skeleton_pipeline_from_name(default_name, catalog)
         intro = (
-            "Graphe approximé pour le moteur ETL 4GIx (aucun FME Desktop requis à l'exécution)."
+            "Graphe approximé pour le moteur ETL 4GIx (aucun moteur externe requis à l'exécution)."
         )
         return {
             "name": default_name,
@@ -1470,14 +1470,14 @@ def parse_fmw_bytes(raw: bytes, *, default_name: str = "Import FME") -> Dict[str
             "warnings": [intro, *warnings],
             "definition": {"nodes": nodes, "edges": edges},
         }
-    raise last_error or ValueError(FME_ENCRYPTED_HINT)
+    raise last_error or ValueError(FMW_ENCRYPTED_HINT)
 
 
 def export_fmw(definition: Dict[str, Any], name: str = "4GIx Export") -> str:
     nodes = definition.get("nodes") or []
     edges = definition.get("edges") or []
     lines = [
-        "#! FME Workspace File",
+        "#! 4GIx FMW Workspace",
         "#! Exported by 4GIx Recflow",
         f'#! NAME "{name}"',
         '#! <WORKSPACE FORMAT="1.0" ENCODING="UTF-8">',
@@ -1487,7 +1487,7 @@ def export_fmw(definition: Dict[str, Any], name: str = "4GIx Export") -> str:
     for index, node in enumerate(nodes, start=1):
         data = node.get("data") or {}
         node_type = data.get("nodeType") or node.get("type") or "transformer"
-        fme_type = FOURGIX_TO_FME.get(node_type, node_type)
+        fme_type = NODE_TO_FMW_FACTORY.get(node_type, node_type)
         fid = str(index)
         nid = node.get("id") or fid
         id_rev[nid] = fid
@@ -1515,7 +1515,7 @@ def export_fmw(definition: Dict[str, Any], name: str = "4GIx Export") -> str:
     lines.append("#!   </LINK_LIST>")
     lines.append("#! </WORKSPACE>")
     lines.append("")
-    lines.append("# Mapping file stub (regenerated by FME Desktop on open)")
+    lines.append("# Mapping file stub (regenerated by un éditeur .fmw externe à l'ouverture)")
     lines.append(f"# 4GIx workflow: {name}")
     lines.append(f"# nodes={len(nodes)} edges={len(edges)}")
     return "\n".join(lines)

@@ -7,7 +7,7 @@ import geopandas as gpd
 from pyproj import CRS
 
 from app.nodes.base import Base4GIxNode, _as_feature_collection, unwrap_input_data
-from app.nodes.fme_features import ports_payload
+from app.nodes.workflow_features import ports_payload
 
 
 class ReprojectorNode(Base4GIxNode):
@@ -16,7 +16,7 @@ class ReprojectorNode(Base4GIxNode):
     is_spatial = True
     label = "Transform Coordinate System"
     description = "Reproject spatial reference CRS"
-    fme_group = "Coordinate Systems"
+    palette_group = "Coordinate Systems"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

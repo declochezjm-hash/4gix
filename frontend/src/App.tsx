@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
-import { NodeModal } from "./components/NodeModal/NodeModal";
 import { TopBar } from "./components/Header/TopBar";
+import { NodeModal } from "./components/NodeModal/NodeModal";
 import { isFmwFilename } from "./lib/api";
 import { useDagStore } from "./store/dagStore";
 

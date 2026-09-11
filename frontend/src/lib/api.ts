@@ -30,7 +30,7 @@ export type CatalogNode = {
 	schema: NodeSchema;
 	input_handles?: string[];
 	output_handles?: string[];
-	fme_group?: string;
+	palette_group?: string;
 };
 
 export type NodeSnapshot = {
@@ -92,7 +92,7 @@ export type FlowNodeData = {
 	error?: string | null;
 	inputHandles?: string[];
 	outputHandles?: string[];
-	fmeGroup?: string;
+	paletteGroup?: string;
 	notes?: string;
 	disabled?: boolean;
 };
@@ -234,7 +234,10 @@ export type ShapefileZipImportResult = {
 	};
 };
 
-export function formatApiErrorDetail(payload: unknown, fallback: string): string {
+export function formatApiErrorDetail(
+	payload: unknown,
+	fallback: string,
+): string {
 	if (!payload || typeof payload !== "object") return fallback;
 	const detail = (payload as { detail?: unknown }).detail;
 	if (typeof detail === "string") return detail;
@@ -267,7 +270,9 @@ export async function executeFmwFile(file: File): Promise<FmeEngineRunResult> {
 	});
 	const payload = await response.json();
 	if (!response.ok) {
-		throw new Error(formatApiErrorDetail(payload, "Exécution FME impossible."));
+		throw new Error(
+			formatApiErrorDetail(payload, "Exécution .fmw impossible."),
+		);
 	}
 	return payload as FmeEngineRunResult;
 }
@@ -281,9 +286,7 @@ export async function importFmwFile(file: File): Promise<FmwImportResult> {
 	});
 	const payload = await response.json();
 	if (!response.ok) {
-		throw new Error(
-			formatApiErrorDetail(payload, "Import FME impossible."),
-		);
+		throw new Error(formatApiErrorDetail(payload, "Import .fmw impossible."));
 	}
 	return payload;
 }
@@ -338,7 +341,9 @@ export async function zipLooksLikeShapefile(file: File): Promise<boolean> {
 		const buffer = await file.arrayBuffer();
 		const text = new TextDecoder("latin1").decode(buffer);
 		const lower = text.toLowerCase();
-		return lower.includes(".shp") && lower.includes(".dbf") && lower.includes(".shx");
+		return (
+			lower.includes(".shp") && lower.includes(".dbf") && lower.includes(".shx")
+		);
 	} catch {
 		return true;
 	}
@@ -380,7 +385,7 @@ export async function downloadExportFmw(
 ): Promise<void> {
 	const response = await fetch(exportFmwUrl(workflowId));
 	if (!response.ok) {
-		let detail = "Export FME impossible.";
+		let detail = "Export .fmw impossible.";
 		try {
 			const payload = (await response.json()) as { detail?: string };
 			if (payload.detail) detail = payload.detail;

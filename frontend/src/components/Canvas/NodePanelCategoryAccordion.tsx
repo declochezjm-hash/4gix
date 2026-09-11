@@ -2,11 +2,7 @@ import { useState } from "react";
 import type { CatalogNode } from "../../lib/api";
 import type { N8nGroup } from "../../lib/n8nCatalog";
 import { catalogSubgroups } from "../../lib/n8nCatalog";
-import {
-	ChevronDown,
-	ChevronRight,
-	groupLucideIcon,
-} from "../../lib/n8nIcons";
+import { ChevronDown, ChevronRight, groupLucideIcon } from "../../lib/n8nIcons";
 import { NodePanelEntry } from "./NodePanelEntry";
 
 type NodePanelCategoryAccordionProps = {

@@ -16,7 +16,7 @@ class Base4GIxNode(ABC):
     description: str = ""
     input_handles: List[str] = ["input"]
     output_handles: List[str] = ["output"]
-    fme_group: str = ""
+    palette_group: str = ""
 
     @classmethod
     @abstractmethod
@@ -45,7 +45,7 @@ class Base4GIxNode(ABC):
             "schema": schema,
             "input_handles": list(cls.input_handles or ["input"]),
             "output_handles": list(cls.output_handles or ["output"]),
-            "fme_group": cls.fme_group or "",
+            "palette_group": cls.palette_group or "",
         }
 
 
@@ -198,10 +198,10 @@ def build_snapshot_from_payload(
         ).to_dict()
 
     if isinstance(payload, dict) and payload.get("ports"):
-        from app.nodes.fme_features import port_previews
+        from app.nodes.workflow_features import port_previews
 
         previews = port_previews(payload)
-        metadata.setdefault("fme_ports", True)
+        metadata.setdefault("multi_port", True)
         primary = previews.get("output") or (fc and _preview_limit(fc))
         return NodeSnapshot(
             node_id=node_id,

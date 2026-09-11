@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, List
 
 from app.nodes.base import Base4GIxNode
-from app.nodes.fme_features import feature_from_shapely, input_features, ports_payload, shapely_of
+from app.nodes.workflow_features import feature_from_shapely, input_features, ports_payload, shapely_of
 
 SAFE_FUNCS = {
     "abs": abs,
@@ -79,7 +79,7 @@ class AttributeManagerNode(Base4GIxNode):
     is_spatial = False
     label = "Edit Fields"
     description = "Add, rename, remove or modify attributes"
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -130,7 +130,7 @@ class TesterNode(Base4GIxNode):
     label = "If / Filter Condition"
     description = "Validate conditions on feature fields"
     output_handles = ["passed", "failed"]
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -174,7 +174,7 @@ class TestFilterNode(Base4GIxNode):
     label = "Switch / Multi-Condition"
     description = "Route features based on rules"
     output_handles = ["output1", "output2", "output3", "else"]
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -214,7 +214,7 @@ class ListExploderNode(Base4GIxNode):
     is_spatial = False
     label = "Split List Array"
     description = "Flatten list attributes into features"
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -258,7 +258,7 @@ class CounterNode(Base4GIxNode):
     is_spatial = False
     label = "Increment Counter"
     description = "Add sequence number or ID"
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -293,7 +293,7 @@ class DuplicateFilterNode(Base4GIxNode):
     label = "Remove Duplicates"
     description = "Filter out identical records"
     output_handles = ["unique", "duplicate"]
-    fme_group = "Attribute Operations"
+    palette_group = "Attribute Operations"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

@@ -6,7 +6,7 @@ const CATEGORIES = ["Reader", "Transformer", "Writer"] as const;
 function groupTransformers(entries: CatalogNode[]): [string, CatalogNode[]][] {
 	const groups = new Map<string, CatalogNode[]>();
 	for (const entry of entries) {
-		const key = entry.fme_group || "Autres";
+		const key = entry.palette_group || "Autres";
 		const list = groups.get(key) || [];
 		list.push(entry);
 		groups.set(key, list);
@@ -21,7 +21,7 @@ export function NodePalette() {
 	return (
 		<aside className="palette">
 			<header>
-				<h2>Nœuds FME</h2>
+				<h2>Nœuds ETL</h2>
 				<p>Glissez un type sur le canvas, ou cliquez pour l'ajouter.</p>
 			</header>
 			{CATEGORIES.map((category) => {

@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import geopandas as gpd
 
 from app.nodes.base import Base4GIxNode
-from app.nodes.fme_features import (
+from app.nodes.workflow_features import (
     feature_from_shapely,
     input_features,
     ports_payload,
@@ -32,7 +32,7 @@ class FeatureMergerNode(Base4GIxNode):
     description = "Jointure attributaire 1:N (Merged / Unmerged_Request / Unmerged_Supplier)."
     input_handles = ["request", "supplier"]
     output_handles = ["merged", "unmerged_request", "unmerged_supplier"]
-    fme_group = "Combiners & Joins"
+    palette_group = "Combiners & Joins"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -92,7 +92,7 @@ class SpatialRelatorNode(Base4GIxNode):
     description = "Match features by location"
     input_handles = ["request", "supplier"]
     output_handles = ["related", "unrelated"]
-    fme_group = "Combiners & Joins"
+    palette_group = "Combiners & Joins"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -145,7 +145,7 @@ class NeighborFinderNode(Base4GIxNode):
     label = "NeighborFinder"
     description = "Associe les K plus proches voisins entre deux couches spatiales."
     input_handles = ["base", "candidates"]
-    fme_group = "Combiners & Joins"
+    palette_group = "Combiners & Joins"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

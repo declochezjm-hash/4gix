@@ -1,4 +1,4 @@
-"""Jeux d'exemple BIM / CAD / Raster / FME et workflows de démonstration."""
+"""Jeux d'exemple BIM / CAD / Raster / .fmw et workflows de démonstration."""
 
 from __future__ import annotations
 
@@ -166,9 +166,9 @@ def _write_sample_ifc_api(path: Path) -> None:
 def _write_fme_demo(path: Path) -> None:
     import json
 
-    from app.nodes.readers.geojson_reader import SAMPLE_FME_DEMO
+    from app.nodes.readers.geojson_reader import SAMPLE_WORKSPACE_DEMO
 
-    path.write_text(json.dumps(SAMPLE_FME_DEMO, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(SAMPLE_WORKSPACE_DEMO, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _seed_demo_workflow() -> str | None:
@@ -275,10 +275,13 @@ def _seed_fme_workflow() -> str | None:
     try:
         existing = persistence.list_workflows()
         for item in existing:
-            if item.get("name") == "FME : Validator → Tester → Dissolver → PostGIS":
+            if item.get("name") in (
+                "Démo : Validator → Tester → Dissolver → PostGIS",
+                "FME : Validator → Tester → Dissolver → PostGIS",
+            ):
                 return item.get("id")
         saved = persistence.upsert_workflow(
-            name="FME : Validator → Tester → Dissolver → PostGIS",
+            name="Démo : Validator → Tester → Dissolver → PostGIS",
             definition=_fme_demo_definition(),
         )
         return saved.get("id")
@@ -326,7 +329,7 @@ def _fme_demo_definition() -> dict:
                 "Reader",
                 40,
                 160,
-                {"sample_set": "fme_demo", "use_sample": True, "geojson": ""},
+                {"sample_set": "workspace_demo", "use_sample": True, "geojson": ""},
             ),
             _node(
                 "geometry_validator-1",

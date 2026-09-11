@@ -238,7 +238,9 @@ export function bboxFromInspection(value: unknown): number[] | null {
 		if (
 			Array.isArray(fromMeta) &&
 			fromMeta.length === 4 &&
-			fromMeta.every((item) => typeof item === "number" && Number.isFinite(item))
+			fromMeta.every(
+				(item) => typeof item === "number" && Number.isFinite(item),
+			)
 		) {
 			return fromMeta as number[];
 		}
@@ -256,7 +258,7 @@ export function inspectFeature(
 		geomType: geom?.type || "Null",
 		bbox: bboxOf(geom),
 		vertices: vertexCount(geom),
-		epsg: String(props.fme_crs || crsHint || "EPSG:4326"),
+		epsg: String(props.gix_crs || props.fme_crs || crsHint || "EPSG:4326"),
 		properties: props,
 	};
 }

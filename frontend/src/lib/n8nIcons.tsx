@@ -1,13 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-	Bot,
-	Box,
-	Globe,
-	Image,
-	Layers,
-	Terminal,
-	Wand2,
-} from "lucide-react";
+import { Bot, Box, Globe, Image, Layers, Terminal, Wand2 } from "lucide-react";
 import type { CatalogNode } from "./api";
 import { groupIdOf, type N8nGroupId } from "./n8nCatalog";
 
