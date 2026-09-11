@@ -1,17 +1,22 @@
 import type { Node } from "@xyflow/react";
 import {
+	LayoutGrid,
 	LayoutList,
 	MoreVertical,
 	Search,
 	SlidersHorizontal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { FlowNodeData, WorkflowRecord } from "../../lib/api";
 import { topologicalLayerMap } from "../../lib/workflowPagination";
 import { useDagStore } from "../../store/dagStore";
 
 type OverviewTab = "nodes" | "workflows";
+type OverviewViewMode = "comfortable" | "compact";
+type NodeStatusFilter = "all" | "active" | "inactive";
+type WorkflowScopeFilter = "all" | "open";
+type WorkflowSort = "updated" | "name" | "created";
 
 const PAGE_SIZES = [25, 50, 100] as const;
 
@@ -73,6 +78,28 @@ export function ProjectOverview() {
 	const [page, setPage] = useState(0);
 	const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[1]);
 	const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+	const [filtersOpen, setFiltersOpen] = useState(false);
+	const [viewMode, setViewMode] = useState<OverviewViewMode>("comfortable");
+	const [nodeStatusFilter, setNodeStatusFilter] =
+		useState<NodeStatusFilter>("all");
+	const [workflowScopeFilter, setWorkflowScopeFilter] =
+		useState<WorkflowScopeFilter>("all");
+	const [workflowSort, setWorkflowSort] = useState<WorkflowSort>("updated");
+	const filtersRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!filtersOpen) return;
+		const onPointerDown = (event: MouseEvent) => {
+			if (
+				filtersRef.current &&
+				!filtersRef.current.contains(event.target as HTMLElement)
+			) {
+				setFiltersOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", onPointerDown);
+		return () => document.removeEventListener("mousedown", onPointerDown);
+	}, [filtersOpen]);
 
 	const layers = useMemo(
 		() => topologicalLayerMap(nodes, edges),
@@ -90,13 +117,18 @@ export function ProjectOverview() {
 					row.id.toLowerCase().includes(q),
 			);
 		}
+		if (nodeStatusFilter === "active") {
+			rows = rows.filter((row) => !row.disabled);
+		} else if (nodeStatusFilter === "inactive") {
+			rows = rows.filter((row) => row.disabled);
+		}
 		rows.sort((a, b) => {
 			if (sort === "name") return a.label.localeCompare(b.label, "fr");
 			if (sort === "type") return a.type.localeCompare(b.type, "fr");
 			return a.layer - b.layer || a.label.localeCompare(b.label, "fr");
 		});
 		return rows;
-	}, [nodes, layers, search, sort]);
+	}, [nodes, layers, search, sort, nodeStatusFilter]);
 
 	const workflowRows = useMemo(() => {
 		const q = search.trim().toLowerCase();
@@ -107,13 +139,29 @@ export function ProjectOverview() {
 					w.name.toLowerCase().includes(q) || w.id.toLowerCase().includes(q),
 			);
 		}
+		if (workflowScopeFilter === "open" && workflowId) {
+			rows = rows.filter((w) => w.id === workflowId);
+		}
 		rows.sort((a, b) => {
+			if (workflowSort === "name") {
+				return a.name.localeCompare(b.name, "fr");
+			}
+			if (workflowSort === "created") {
+				const ta = new Date(a.created_at || 0).getTime();
+				const tb = new Date(b.created_at || 0).getTime();
+				return tb - ta;
+			}
 			const ta = new Date(a.updated_at || a.created_at || 0).getTime();
 			const tb = new Date(b.updated_at || b.created_at || 0).getTime();
 			return tb - ta;
 		});
 		return rows;
-	}, [workflows, search]);
+	}, [workflows, search, workflowScopeFilter, workflowId, workflowSort]);
+
+	const filtersActive =
+		tab === "nodes"
+			? nodeStatusFilter !== "all"
+			: workflowScopeFilter !== "all";
 
 	const activeList = tab === "nodes" ? nodeRows : workflowRows;
 	const totalPages = Math.max(1, Math.ceil(activeList.length / pageSize));
@@ -191,13 +239,15 @@ export function ProjectOverview() {
 				</div>
 				<select
 					className="project-overview__sort"
-					value={tab === "nodes" ? sort : "updated"}
+					value={tab === "nodes" ? sort : workflowSort}
 					onChange={(e) => {
 						if (tab === "nodes") {
 							setSort(e.target.value as "name" | "type" | "layer");
+						} else {
+							setWorkflowSort(e.target.value as WorkflowSort);
 						}
+						setPage(0);
 					}}
-					disabled={tab !== "nodes"}
 					aria-label="Trier"
 				>
 					{tab === "nodes" ? (
@@ -207,27 +257,132 @@ export function ProjectOverview() {
 							<option value="type">Trier par type</option>
 						</>
 					) : (
-						<option value="updated">Trier par dernière mise à jour</option>
+						<>
+							<option value="updated">Trier par dernière mise à jour</option>
+							<option value="created">Trier par date de création</option>
+							<option value="name">Trier par nom</option>
+						</>
 					)}
 				</select>
-				<button
-					type="button"
-					className="project-overview__icon-btn"
-					title="Filtres (à venir)"
-					disabled
-				>
-					<SlidersHorizontal size={18} />
-				</button>
+				<div className="project-overview__filters-wrap" ref={filtersRef}>
+					<button
+						type="button"
+						className={
+							filtersOpen || filtersActive
+								? "project-overview__icon-btn is-active"
+								: "project-overview__icon-btn"
+						}
+						title="Filtres"
+						aria-expanded={filtersOpen}
+						aria-haspopup="true"
+						onClick={() => setFiltersOpen((open) => !open)}
+					>
+						<SlidersHorizontal size={18} />
+					</button>
+					{filtersOpen ? (
+						<div className="project-overview__filters-popover" role="dialog">
+							<p className="project-overview__filters-title">Filtres</p>
+							{tab === "nodes" ? (
+								<fieldset className="project-overview__filters-fieldset">
+									<legend>État du nœud</legend>
+									<label>
+										<input
+											type="radio"
+											name="node-status-filter"
+											checked={nodeStatusFilter === "all"}
+											onChange={() => {
+												setNodeStatusFilter("all");
+												setPage(0);
+											}}
+										/>
+										Tous
+									</label>
+									<label>
+										<input
+											type="radio"
+											name="node-status-filter"
+											checked={nodeStatusFilter === "active"}
+											onChange={() => {
+												setNodeStatusFilter("active");
+												setPage(0);
+											}}
+										/>
+										Actifs uniquement
+									</label>
+									<label>
+										<input
+											type="radio"
+											name="node-status-filter"
+											checked={nodeStatusFilter === "inactive"}
+											onChange={() => {
+												setNodeStatusFilter("inactive");
+												setPage(0);
+											}}
+										/>
+										Inactifs uniquement
+									</label>
+								</fieldset>
+							) : (
+								<fieldset className="project-overview__filters-fieldset">
+									<legend>Portée</legend>
+									<label>
+										<input
+											type="radio"
+											name="workflow-scope-filter"
+											checked={workflowScopeFilter === "all"}
+											onChange={() => {
+												setWorkflowScopeFilter("all");
+												setPage(0);
+											}}
+										/>
+										Tous les workflows
+									</label>
+									<label>
+										<input
+											type="radio"
+											name="workflow-scope-filter"
+											checked={workflowScopeFilter === "open"}
+											onChange={() => {
+												setWorkflowScopeFilter("open");
+												setPage(0);
+											}}
+										/>
+										Workflow ouvert dans l&apos;éditeur
+									</label>
+								</fieldset>
+							)}
+						</div>
+					) : null}
+				</div>
 				<button
 					type="button"
 					className="project-overview__icon-btn is-active"
-					title="Vue liste"
+					title={
+						viewMode === "comfortable"
+							? "Passer en vue compacte"
+							: "Passer en vue détaillée"
+					}
+					onClick={() =>
+						setViewMode((mode) =>
+							mode === "comfortable" ? "compact" : "comfortable",
+						)
+					}
 				>
-					<LayoutList size={18} />
+					{viewMode === "comfortable" ? (
+						<LayoutList size={18} />
+					) : (
+						<LayoutGrid size={18} />
+					)}
 				</button>
 			</div>
 
-			<ul className="overview-cards">
+			<ul
+				className={
+					viewMode === "compact"
+						? "overview-cards overview-cards--compact"
+						: "overview-cards"
+				}
+			>
 				{pageItems.length === 0 ? (
 					<li className="overview-cards__empty">
 						{tab === "nodes"
