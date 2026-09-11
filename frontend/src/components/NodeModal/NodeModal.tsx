@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { nodeChrome } from "../../lib/n8nCatalog";
 import { catalogEntryIcon, N8nIconBadge } from "../../lib/n8nIcons";
 import { useDagStore } from "../../store/dagStore";
 import { ConfigWindow } from "./ConfigWindow";
+import type { InspectorConfigTab } from "./configTabs";
 import { InputWindow } from "./InputWindow";
 import { OutputWindow } from "./OutputWindow";
 
@@ -16,6 +17,14 @@ export function NodeModal() {
 	const running = useDagStore((s) => s.running);
 	const node = nodes.find((n) => n.id === selectedNodeId);
 	const snapshot = selectedNodeId ? snapshots[selectedNodeId] : undefined;
+	const [configTab, setConfigTab] = useState<InspectorConfigTab>("parameters");
+	const onConfigTabChange = useCallback((next: InspectorConfigTab) => {
+		setConfigTab(next);
+	}, []);
+
+	useEffect(() => {
+		setConfigTab("parameters");
+	}, [selectedNodeId]);
 
 	useEffect(() => {
 		if (!inspectorOpen) return;
@@ -61,6 +70,14 @@ export function NodeModal() {
 				<div className="n8n-modal__actions">
 					<button
 						type="button"
+						className={`n8n-help-btn${configTab === "help" ? " is-active" : ""}`}
+						onClick={() => setConfigTab("help")}
+						title="Ouvrir l'aide de ce nœud"
+					>
+						Aide
+					</button>
+					<button
+						type="button"
 						className="n8n-test-btn"
 						onClick={() => void runSelectedNode()}
 						disabled={running}
@@ -79,7 +96,7 @@ export function NodeModal() {
 			</header>
 			<div className="n8n-modal__cols">
 				<InputWindow />
-				<ConfigWindow />
+				<ConfigWindow tab={configTab} onTabChange={onConfigTabChange} />
 				<OutputWindow />
 			</div>
 		</div>

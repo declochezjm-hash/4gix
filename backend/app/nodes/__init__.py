@@ -4,11 +4,15 @@ from typing import Dict, List, Type
 
 from app.nodes.base import Base4GIxNode
 from app.nodes.readers import (
+    CsvReader,
     DxfReaderNode,
+    ExcelReader,
     FileReader,
     GeoJSONReader,
     GeoTiffRasterReaderNode,
+    GpkgReader,
     IfcBimReaderNode,
+    KmlReader,
     PostGISReader,
     RestWfsReaderNode,
     ShapefileReader,
@@ -53,6 +57,10 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
     for cls in (
         PostGISReader,
         FileReader,
+        CsvReader,
+        ExcelReader,
+        GpkgReader,
+        KmlReader,
         ShapefileReader,
         GeoJSONReader,
         IfcBimReaderNode,

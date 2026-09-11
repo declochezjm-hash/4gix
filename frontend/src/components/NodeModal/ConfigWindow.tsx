@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { getNodeDoc } from "../../config/nodeDocs";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
 import { CodeEditorParam } from "./CodeEditorParam";
 import { defaultCodeForLanguage } from "./codeTemplates";
+import type { InspectorConfigTab } from "./configTabs";
+import { NodeHelpPane } from "./NodeHelpPane";
 
 function isCodeNodeType(nodeType: string): boolean {
 	return nodeType === "python_caller" || nodeType === "code_node";
@@ -251,16 +254,27 @@ function Field({
 	);
 }
 
-export function ConfigWindow() {
+type ConfigWindowProps = {
+	tab: InspectorConfigTab;
+	onTabChange: (tab: InspectorConfigTab) => void;
+};
+
+export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 	const selectedNodeId = useDagStore((s) => s.selectedNodeId);
 	const nodes = useDagStore((s) => s.nodes);
 	const catalog = useDagStore((s) => s.catalog);
 	const updateNodeParams = useDagStore((s) => s.updateNodeParams);
 	const updateNodeData = useDagStore((s) => s.updateNodeData);
-	const [tab, setTab] = useState<"parameters" | "settings">("parameters");
 	const node = nodes.find((n) => n.id === selectedNodeId);
 	const catalogEntry = catalog.find(
 		(item) => item.node_type === node?.data.nodeType,
+	);
+	const nodeDoc = useMemo(
+		() =>
+			node
+				? getNodeDoc(node.data.nodeType, catalogEntry)
+				: null,
+		[node, catalogEntry],
 	);
 	const properties = useMemo(
 		() =>
@@ -290,23 +304,40 @@ export function ConfigWindow() {
 							catalogEntry?.description ||
 							node.data.nodeType}
 				</p>
-				<div className="pane-tabs" role="tablist">
+				<div className="pane-tabs pane-tabs--config" role="tablist">
 					<button
 						type="button"
+						role="tab"
+						aria-selected={tab === "parameters"}
 						className={tab === "parameters" ? "is-active" : ""}
-						onClick={() => setTab("parameters")}
+						onClick={() => onTabChange("parameters")}
 					>
-						Parameters
+						Paramètres
 					</button>
 					<button
 						type="button"
-						className={tab === "settings" ? "is-active" : ""}
-						onClick={() => setTab("settings")}
+						role="tab"
+						aria-selected={tab === "help"}
+						className={`pane-tabs__help${tab === "help" ? " is-active" : ""}`}
+						onClick={() => onTabChange("help")}
+						title="Documentation du nœud"
 					>
-						Settings
+						Aide
+					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-selected={tab === "settings"}
+						className={tab === "settings" ? "is-active" : ""}
+						onClick={() => onTabChange("settings")}
+					>
+						Réglages
 					</button>
 				</div>
 			</header>
+			{tab === "help" && nodeDoc ? (
+				<NodeHelpPane doc={nodeDoc} />
+			) : null}
 			{tab === "settings" ? (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
 					<label>
@@ -335,7 +366,7 @@ export function ConfigWindow() {
 						<input value={node.data.nodeType} readOnly />
 					</label>
 				</form>
-			) : isCodeNodeType(node.data.nodeType) ? (
+			) : tab === "parameters" && isCodeNodeType(node.data.nodeType) ? (
 				<form
 					className="config-form config-form--code"
 					onSubmit={(e) => e.preventDefault()}
@@ -354,7 +385,7 @@ export function ConfigWindow() {
 						onChange={(patch) => updateNodeParams(node.id, patch)}
 					/>
 				</form>
-			) : (
+			) : tab === "parameters" ? (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
 					{Object.keys(properties).length === 0 ? (
 						<div className="empty">
@@ -374,7 +405,7 @@ export function ConfigWindow() {
 						))
 					)}
 				</form>
-			)}
+			) : null}
 		</section>
 	);
 }

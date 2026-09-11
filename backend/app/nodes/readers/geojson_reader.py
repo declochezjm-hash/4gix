@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
+import geopandas as gpd
+
 from app.core.paths import resolve_workspace_path
+from app.core.readers.shapefile import shapefile_read_outputs
 from app.nodes.base import Base4GIxNode, _as_feature_collection
 
 
@@ -186,4 +189,21 @@ class GeoJSONReader(Base4GIxNode):
         }
         if file_path:
             metadata["path"] = str(resolve_workspace_path(file_path))
-        return {"data": fc, "metadata": metadata}
+
+        result: Dict[str, Any] = {"data": fc, "metadata": metadata}
+        if file_path and fc.get("features"):
+            try:
+                gdf = gpd.GeoDataFrame.from_features(
+                    fc.get("features") or [],
+                    crs="EPSG:4326",
+                )
+                _native, map_geojson, spatial_meta = shapefile_read_outputs(gdf)
+                result["data"] = _native
+                result["map_geojson"] = map_geojson
+                metadata.update(
+                    {k: v for k, v in spatial_meta.items() if k not in metadata},
+                )
+            except Exception:
+                result["map_geojson"] = fc
+                metadata.setdefault("bbox", None)
+        return result

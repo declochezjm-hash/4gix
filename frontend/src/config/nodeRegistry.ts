@@ -166,15 +166,40 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 		paletteDescription: "Locate nearest features between two layers",
 		searchTags: ["NeighborFinder"],
 	},
-	shapefile_reader: {
-		displayName: "Read Shapefile",
-		paletteDescription: "Import ESRI Shapefile or .zip archive",
-		searchTags: ["Shapefile", "Shapefile Reader"],
+	excel_reader: {
+		displayName: "Excel Reader",
+		paletteDescription: "Import sheet data from .xlsx / .xls",
+		searchTags: ["Excel", "XLSX", "spreadsheet"],
+	},
+	csv_reader: {
+		displayName: "CSV Reader",
+		paletteDescription: "Parse tabular text files with custom delimiters",
+		searchTags: ["CSV", "delimiter", "tabular"],
+	},
+	gpkg_reader: {
+		displayName: "GeoPackage Reader",
+		paletteDescription: "Read vector/raster layers from OGC .gpkg",
+		searchTags: ["GPKG", "GeoPackage", "OGC"],
 	},
 	geojson_reader: {
-		displayName: "Read GeoJSON",
-		paletteDescription: "Load GeoJSON features from workspace",
-		searchTags: ["GeoJSON"],
+		displayName: "GeoJSON Reader",
+		paletteDescription: "Import GeoJSON spatial features",
+		searchTags: ["GeoJSON", "JSON"],
+	},
+	kml_reader: {
+		displayName: "KML / KMZ Reader",
+		paletteDescription: "Read Google Earth vector data",
+		searchTags: ["KML", "KMZ", "Google Earth"],
+	},
+	dxf_reader: {
+		displayName: "CAD / DXF Reader",
+		paletteDescription: "Import AutoCAD geometry features",
+		searchTags: ["DXF", "CAD", "AutoCAD"],
+	},
+	shapefile_reader: {
+		displayName: "Shapefile Reader",
+		paletteDescription: "Import ESRI Shapefile or .zip archive",
+		searchTags: ["Shapefile", "Shapefile Reader", "SHP"],
 	},
 	postgis_reader: {
 		displayName: "Read PostGIS",

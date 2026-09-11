@@ -25,7 +25,8 @@ import {
 	importFmwFile,
 	isFmwFilename,
 	isShapefileZipFilename,
-	isSpatialDataFilename,
+	isDataImportFilename,
+	fileLooksLikeGeoJSON,
 	type MapViewState,
 	type NodeSnapshot,
 	saveWorkflow,
@@ -887,14 +888,22 @@ export const useDagStore = create<DagState>((set, get) => ({
 			await get().importFmwFromFile(file);
 			return;
 		}
-		if (isSpatialDataFilename(file.name)) {
-			await get().importDataFileFromDrop(file);
-			return;
+		if (isDataImportFilename(file.name)) {
+			if (lower.endsWith(".json")) {
+				const isGeo = await fileLooksLikeGeoJSON(file);
+				if (isGeo) {
+					await get().importDataFileFromDrop(file);
+					return;
+				}
+			} else {
+				await get().importDataFileFromDrop(file);
+				return;
+			}
 		}
 		if (!lower.endsWith(".json") && !lower.endsWith(".4gix.json")) {
 			set({
 				error:
-					"Formats acceptés: .fmw, .fmwt, .json, .zip (Shapefile), .geojson, .tif",
+					"Formats acceptés: .fmw, .fmwt, .json workflow, .xlsx, .csv, .gpkg, .geojson, .kml, .dxf, .zip (Shapefile), .tif",
 			});
 			return;
 		}
@@ -928,12 +937,19 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	importDataFileFromDrop: async (file, position) => {
-		if (!isSpatialDataFilename(file.name)) {
+		if (!isDataImportFilename(file.name)) {
 			set({
 				error:
-					"Formats de données acceptés : .zip (Shapefile), .geojson, .tif / .tiff.",
+					"Formats de données : .xlsx, .xls, .csv, .gpkg, .geojson, .json (GeoJSON), .kml, .kmz, .dxf, .zip (Shapefile), .shp, .tif.",
 			});
 			return;
+		}
+		if (file.name.toLowerCase().endsWith(".json")) {
+			const isGeo = await fileLooksLikeGeoJSON(file);
+			if (!isGeo) {
+				set({ error: "Ce .json n’est pas un GeoJSON valide." });
+				return;
+			}
 		}
 		if (isShapefileZipFilename(file.name)) {
 			const looksLike = await zipLooksLikeShapefile(file);

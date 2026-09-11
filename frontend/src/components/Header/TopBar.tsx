@@ -88,7 +88,7 @@ export function TopBar() {
 					id="fmw-file-input"
 					ref={fileInputRef}
 					className="import-file-input"
-					accept=".fmw,.fmwt,.json,.4gix.json,.zip"
+					accept=".fmw,.fmwt,.json,.4gix.json,.zip,.xlsx,.xls,.csv,.gpkg,.geojson,.kml,.kmz,.dxf,.shp,.tif,.tiff"
 					onChange={handleFileChange}
 				/>
 

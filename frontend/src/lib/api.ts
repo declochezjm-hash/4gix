@@ -308,12 +308,54 @@ export function isGeoTiffDataFilename(name: string): boolean {
 	);
 }
 
+const DATA_IMPORT_SUFFIXES = [
+	".xlsx",
+	".xls",
+	".csv",
+	".gpkg",
+	".kml",
+	".kmz",
+	".dxf",
+	".geojson",
+	".shp",
+	".zip",
+	".tif",
+	".tiff",
+	".geotiff",
+] as const;
+
+export function isWorkflowJsonFilename(name: string): boolean {
+	const lower = name.toLowerCase();
+	return lower.endsWith(".4gix.json");
+}
+
+/** Fichiers acceptés pour POST /api/v1/upload + drop canvas. */
+export function isDataImportFilename(name: string): boolean {
+	const lower = name.toLowerCase();
+	if (DATA_IMPORT_SUFFIXES.some((ext) => lower.endsWith(ext))) return true;
+	if (lower.endsWith(".json") && !isWorkflowJsonFilename(name)) return true;
+	return false;
+}
+
+export async function fileLooksLikeGeoJSON(file: File): Promise<boolean> {
+	try {
+		const sample = (await file.slice(0, 65536).text()).trim();
+		if (!sample) return false;
+		const parsed = JSON.parse(sample) as { type?: string };
+		const kind = parsed?.type;
+		return (
+			kind === "FeatureCollection" ||
+			kind === "Feature" ||
+			kind === "Geometry"
+		);
+	} catch {
+		return false;
+	}
+}
+
+/** @deprecated Préférer isDataImportFilename */
 export function isSpatialDataFilename(name: string): boolean {
-	return (
-		isShapefileZipFilename(name) ||
-		isGeoJsonDataFilename(name) ||
-		isGeoTiffDataFilename(name)
-	);
+	return isDataImportFilename(name);
 }
 
 export async function uploadDataFile(file: File): Promise<DataUploadResult> {

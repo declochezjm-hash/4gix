@@ -1,1 +1,1 @@
-"""Lecteurs SIG partagés (Shapefile, etc.)."""
+"""Lecteurs partagés (Shapefile, CSV, Excel, GeoPackage, …)."""

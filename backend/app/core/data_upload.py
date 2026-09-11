@@ -13,6 +13,12 @@ from app.core.shapefile_import import _safe_upload_name, validate_zip_shapefile
 
 GEOTIFF_SUFFIXES = {".tif", ".tiff", ".geotiff"}
 GEOJSON_SUFFIXES = {".geojson", ".json"}
+EXCEL_SUFFIXES = {".xlsx", ".xls"}
+TABULAR_SUFFIXES = {".csv"}
+GPKG_SUFFIXES = {".gpkg"}
+KML_SUFFIXES = {".kml", ".kmz"}
+DXF_SUFFIXES = {".dxf"}
+SHP_SUFFIXES = {".shp"}
 
 
 def workspace_uri(path: Path) -> str:
@@ -38,6 +44,24 @@ def detect_data_type(filename: str, raw: bytes) -> str:
             "Archive .zip sans Shapefile valide (.shp + .shx + .dbf).",
         )
 
+    if suffix in SHP_SUFFIXES:
+        return "shapefile"
+
+    if suffix in EXCEL_SUFFIXES:
+        return "excel"
+
+    if suffix in TABULAR_SUFFIXES:
+        return "csv"
+
+    if suffix in GPKG_SUFFIXES:
+        return "gpkg"
+
+    if suffix in KML_SUFFIXES:
+        return "kml"
+
+    if suffix in DXF_SUFFIXES:
+        return "dxf"
+
     if suffix in GEOTIFF_SUFFIXES:
         return "geotiff"
 
@@ -47,8 +71,9 @@ def detect_data_type(filename: str, raw: bytes) -> str:
         return "geojson"
 
     raise ValueError(
-        "Format non supporté. Extensions acceptées : .zip (Shapefile), "
-        ".geojson, .json (GeoJSON), .tif, .tiff, .geotiff.",
+        "Format non supporté. Extensions acceptées : "
+        ".xlsx, .xls, .csv, .gpkg, .geojson, .json (GeoJSON), "
+        ".kml, .kmz, .dxf, .shp, .zip (Shapefile), .tif / .tiff.",
     )
 
 
@@ -78,12 +103,15 @@ def suggested_reader(detected_type: str, filename: str, stored: Path) -> Dict[st
     ws_path = workspace_uri(stored)
     stem = Path(filename).stem or "couche"
     if detected_type == "shapefile":
+        path_param = ws_path
+        if stored.suffix.lower() == ".zip":
+            path_param = ws_path
         return {
             "node_type": "shapefile_reader",
             "label": f"Shapefile — {stem}",
             "params": {
-                "path": ws_path,
-                "zip_path": ws_path,
+                "path": path_param,
+                "zip_path": ws_path if stored.suffix.lower() == ".zip" else "",
                 "layer_name": stem,
                 "encoding": "utf-8",
             },
@@ -106,6 +134,36 @@ def suggested_reader(detected_type: str, filename: str, stored: Path) -> Dict[st
                 "path": ws_path,
                 "band": 1,
             },
+        }
+    if detected_type == "excel":
+        return {
+            "node_type": "excel_reader",
+            "label": f"Excel — {stem}",
+            "params": {"path": ws_path, "sheet_name": ""},
+        }
+    if detected_type == "csv":
+        return {
+            "node_type": "csv_reader",
+            "label": f"CSV — {stem}",
+            "params": {"path": ws_path, "encoding": "", "delimiter": ""},
+        }
+    if detected_type == "gpkg":
+        return {
+            "node_type": "gpkg_reader",
+            "label": f"GeoPackage — {stem}",
+            "params": {"path": ws_path, "layer": ""},
+        }
+    if detected_type == "kml":
+        return {
+            "node_type": "kml_reader",
+            "label": f"KML — {stem}",
+            "params": {"path": ws_path, "layer": ""},
+        }
+    if detected_type == "dxf":
+        return {
+            "node_type": "dxf_reader",
+            "label": f"CAD / DXF — {stem}",
+            "params": {"path": ws_path, "source_crs": "EPSG:4326"},
         }
     raise ValueError(f"Type de données inconnu: {detected_type}")
 

@@ -7,6 +7,7 @@ import geopandas as gpd
 from shapely.geometry import LineString, Point, Polygon
 
 from app.core.paths import resolve_workspace_path
+from app.core.readers.shapefile import shapefile_read_outputs
 from app.nodes.base import Base4GIxNode
 
 
@@ -14,8 +15,8 @@ class DxfReaderNode(Base4GIxNode):
     node_type = "dxf_reader"
     category = "Reader"
     is_spatial = True
-    label = "DXF CAD Reader"
-    description = "Lit un DXF (LINES, POLYLINES, HATCH) et convertit les calques en GeoJSON."
+    label = "CAD / DXF Reader"
+    description = "Import AutoCAD geometry features"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -87,17 +88,25 @@ class DxfReaderNode(Base4GIxNode):
         gdf = gpd.GeoDataFrame.from_features(features, crs=source_crs)
         if str(source_crs).upper() != "EPSG:4326" and not gdf.empty:
             gdf = gdf.to_crs("EPSG:4326")
-        geojson = json.loads(gdf.to_json()) if len(gdf) else {"type": "FeatureCollection", "features": features}
+        if len(gdf):
+            geojson, map_geojson, spatial_meta = shapefile_read_outputs(gdf)
+        else:
+            geojson = {"type": "FeatureCollection", "features": features}
+            map_geojson = geojson
+            spatial_meta = {"feature_count": 0, "bbox": None}
+        meta = {
+            "kind": "cad",
+            "source": "dxf",
+            "path": str(path),
+            "feature_count": len(features),
+            "layers": sorted({f["properties"]["layer"] for f in features}),
+            "crs": "EPSG:4326",
+        }
+        meta.update(spatial_meta)
         return {
             "data": geojson,
-            "metadata": {
-                "kind": "cad",
-                "source": "dxf",
-                "path": str(path),
-                "feature_count": len(features),
-                "layers": sorted({f["properties"]["layer"] for f in features}),
-                "crs": "EPSG:4326",
-            },
+            "map_geojson": map_geojson,
+            "metadata": meta,
         }
 
 

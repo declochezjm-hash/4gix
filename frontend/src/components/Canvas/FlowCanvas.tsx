@@ -20,7 +20,11 @@ import { canvasDotsColor, readColorTheme } from "../../lib/theme";
 import "@xyflow/react/dist/style.css";
 
 import type { CatalogNode } from "../../lib/api";
-import { isFmwFilename, isSpatialDataFilename } from "../../lib/api";
+import {
+	fileLooksLikeGeoJSON,
+	isDataImportFilename,
+	isFmwFilename,
+} from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
 import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
@@ -159,20 +163,31 @@ function FlowCanvasInner() {
 			event.preventDefault();
 			const dropped = event.dataTransfer.files?.[0];
 			if (dropped) {
-				const lower = dropped.name.toLowerCase();
-				if (isFmwFilename(dropped.name) || lower.endsWith(".json")) {
+				const bounds = (event.target as HTMLElement)
+					.closest(".canvas-shell")
+					?.getBoundingClientRect();
+				const position = {
+					x: event.clientX - (bounds?.left || 0) - 80,
+					y: event.clientY - (bounds?.top || 0) - 24,
+				};
+				if (isFmwFilename(dropped.name)) {
 					void importLocalWorkflowFile(dropped);
 					return;
 				}
-				if (isSpatialDataFilename(dropped.name)) {
-					const bounds = (event.target as HTMLElement)
-						.closest(".canvas-shell")
-						?.getBoundingClientRect();
-					const position = {
-						x: event.clientX - (bounds?.left || 0) - 80,
-						y: event.clientY - (bounds?.top || 0) - 24,
-					};
+				if (isDataImportFilename(dropped.name)) {
+					const lower = dropped.name.toLowerCase();
+					if (lower.endsWith(".json")) {
+						void fileLooksLikeGeoJSON(dropped).then((isGeo) => {
+							if (isGeo) void importDataFileFromDrop(dropped, position);
+							else void importLocalWorkflowFile(dropped);
+						});
+						return;
+					}
 					void importDataFileFromDrop(dropped, position);
+					return;
+				}
+				if (dropped.name.toLowerCase().endsWith(".json")) {
+					void importLocalWorkflowFile(dropped);
 					return;
 				}
 			}
