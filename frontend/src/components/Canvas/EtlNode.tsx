@@ -63,6 +63,7 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 		category: payload.category,
 	});
 	const openNodePanel = useDagStore((s) => s.openNodePanel);
+	const canvasLocked = useDagStore((s) => s.canvasLocked);
 	const inHandles = payload.inputHandles?.length
 		? payload.inputHandles
 		: ["input"];
@@ -87,7 +88,8 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 						type="target"
 						position={Position.Left}
 						id={handleId}
-						className="n8n-handle"
+						className="n8n-handle n8n-handle--in"
+						isConnectable={!canvasLocked}
 						style={{ top: `${((index + 1) / (inHandles.length + 1)) * 100}%` }}
 					>
 						<span className="n8n-handle__tip n8n-handle__tip--in">
@@ -126,7 +128,8 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 						type="source"
 						position={Position.Right}
 						id={handleId}
-						className="n8n-handle"
+						className="n8n-handle n8n-handle--out"
+						isConnectable={!canvasLocked}
 						style={{ top: `${((index + 1) / (outHandles.length + 1)) * 100}%` }}
 					>
 						<span className="n8n-handle__tip n8n-handle__tip--out">

@@ -11,6 +11,8 @@ export function NodePanelRight() {
 	const catalog = useDagStore((s) => s.catalog);
 	const insertNodeFromPanel = useDagStore((s) => s.insertNodeFromPanel);
 	const loadCatalog = useDagStore((s) => s.loadCatalog);
+	const catalogLoaded = useDagStore((s) => s.catalogLoaded);
+	const panelError = useDagStore((s) => s.error);
 	const pendingConnect = useDagStore((s) => s.pendingConnect);
 	const [query, setQuery] = useState("");
 	const [expandedGroups, setExpandedGroups] = useState<Set<N8nGroupId>>(
@@ -104,6 +106,21 @@ export function NodePanelRight() {
 					aria-label="Search nodes"
 				/>
 			</div>
+			{catalogLoaded && catalog.length === 0 ? (
+				<div className="n8n-panel__empty n8n-panel__empty--block">
+					<p>
+						{panelError ||
+							"Impossible de charger les nœuds. Vérifiez que l’API tourne sur le port 8000."}
+					</p>
+					<button
+						type="button"
+						className="ghost-btn"
+						onClick={() => void loadCatalog()}
+					>
+						Réessayer
+					</button>
+				</div>
+			) : null}
 			<div className="n8n-panel__list n8n-panel__list--accordion">
 				{searching ? (
 					grouped.map(({ group, nodes }) =>
@@ -120,18 +137,16 @@ export function NodePanelRight() {
 						),
 					)
 				) : (
-					<>
-						{grouped.map(({ group, nodes }) => (
-							<NodePanelCategoryAccordion
-								key={group.id}
-								group={group}
-								nodes={nodes}
-								expanded={expandedGroups.has(group.id)}
-								onToggle={() => toggleGroup(group.id)}
-								onSelectNode={insertNodeFromPanel}
-							/>
-						))}
-					</>
+					grouped.map(({ group, nodes }) => (
+						<NodePanelCategoryAccordion
+							key={group.id}
+							group={group}
+							nodes={nodes}
+							expanded={expandedGroups.has(group.id)}
+							onToggle={() => toggleGroup(group.id)}
+							onSelectNode={insertNodeFromPanel}
+						/>
+					))
 				)}
 				{searching && !grouped.some(({ nodes }) => nodes.length > 0) ? (
 					<p className="n8n-panel__empty">

@@ -78,8 +78,10 @@ services:
       4gix:
         condition: service_healthy
     environment:
-      VITE_API_URL: http://localhost:8000
-      VITE_WS_URL: ws://localhost:8000
+      # URLs relatives : le proxy Vite (cible 4gix:8000 dans le réseau Docker) évite un catalogue vide hors localhost.
+      VITE_API_URL: ""
+      VITE_WS_URL: ""
+      VITE_PROXY_TARGET: http://4gix:8000
     ports:
       - "5173:5173"
     volumes:

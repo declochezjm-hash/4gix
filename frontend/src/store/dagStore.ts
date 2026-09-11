@@ -7,6 +7,7 @@ import {
 	type EdgeChange,
 	type Node,
 	type NodeChange,
+	reconnectEdge,
 } from "@xyflow/react";
 import { create } from "zustand";
 
@@ -33,6 +34,12 @@ import {
 	wsExecuteUrl,
 	zipLooksLikeShapefile,
 } from "../lib/api";
+import {
+	buildCanvasEdge,
+	type EdgePathStyle,
+	normalizeCanvasEdges,
+	stripEdgesFromSourceHandle,
+} from "../lib/canvasEdges";
 
 type NodeStatus = NonNullable<FlowNodeData["status"]>;
 
@@ -51,6 +58,7 @@ type DagState = {
 	nodes: Node<FlowNodeData>[];
 	edges: Edge[];
 	catalog: CatalogNode[];
+	catalogLoaded: boolean;
 	workflows: WorkflowRecord[];
 	workflowId: string | null;
 	workflowName: string;
@@ -66,10 +74,14 @@ type DagState = {
 	contextMenu: ContextMenuState | null;
 	nodeClipboard: Node<FlowNodeData> | null;
 	canvasLocked: boolean;
+	edgePathStyle: EdgePathStyle;
 	mapView: MapViewState | null;
 	onNodesChange: (changes: NodeChange<Node<FlowNodeData>>[]) => void;
 	onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
 	onConnect: (connection: Connection) => void;
+	onReconnect: (oldEdge: Edge, connection: Connection) => void;
+	removeEdge: (edgeId: string) => void;
+	setEdgePathStyle: (style: EdgePathStyle) => void;
 	addCatalogNode: (
 		entry: CatalogNode,
 		position?: { x: number; y: number },
@@ -254,6 +266,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 	nodes: [],
 	edges: [],
 	catalog: [],
+	catalogLoaded: false,
 	workflows: [],
 	workflowId: null,
 	workflowName: "Nouveau workflow",
@@ -269,6 +282,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 	contextMenu: null,
 	nodeClipboard: null,
 	canvasLocked: false,
+	edgePathStyle: "default",
 	mapView: null,
 
 	onNodesChange: (changes) =>
@@ -277,13 +291,34 @@ export const useDagStore = create<DagState>((set, get) => ({
 	onEdgesChange: (changes) =>
 		set({ edges: applyEdgeChanges(changes, get().edges) }),
 
-	onConnect: (connection) =>
+	onConnect: (connection) => {
+		const pathStyle = get().edgePathStyle;
+		const base = stripEdgesFromSourceHandle(get().edges, connection);
 		set({
-			edges: addEdge(
-				{ ...connection, type: "default", animated: false },
-				get().edges,
-			),
+			edges: addEdge(buildCanvasEdge(connection, pathStyle), base),
 			pendingConnect: null,
+		});
+	},
+
+	onReconnect: (oldEdge, connection) => {
+		const without = get().edges.filter((edge) => edge.id !== oldEdge.id);
+		const stripped = stripEdgesFromSourceHandle(without, connection);
+		set({
+			edges: reconnectEdge(
+				{ ...oldEdge, type: get().edgePathStyle },
+				connection,
+				stripped,
+			),
+		});
+	},
+
+	removeEdge: (edgeId) =>
+		set({ edges: get().edges.filter((edge) => edge.id !== edgeId) }),
+
+	setEdgePathStyle: (style) =>
+		set({
+			edgePathStyle: style,
+			edges: normalizeCanvasEdges(get().edges, style),
 		}),
 
 	addCatalogNode: (entry, position) => {
@@ -317,15 +352,15 @@ export const useDagStore = create<DagState>((set, get) => ({
 			const sourceHandle =
 				pendingConnect?.handleId || source.data.outputHandles?.[0] || "output";
 			const targetHandle = entry.input_handles?.[0] || "input";
+			const link: Connection = {
+				source: source.id,
+				sourceHandle,
+				target: node.id,
+				targetHandle,
+			};
 			nextEdges = addEdge(
-				{
-					source: source.id,
-					sourceHandle,
-					target: node.id,
-					targetHandle,
-					type: "default",
-				},
-				edges,
+				buildCanvasEdge(link, get().edgePathStyle),
+				stripEdgesFromSourceHandle(edges, link),
 			);
 		}
 		set({
@@ -419,10 +454,24 @@ export const useDagStore = create<DagState>((set, get) => ({
 
 	loadCatalog: async () => {
 		try {
-			const catalog = await fetchCatalog();
-			set({ catalog: enrichCatalog(catalog.nodes), error: null });
+			const payload = await fetchCatalog();
+			const nodes = enrichCatalog(payload.nodes || []);
+			set({
+				catalog: nodes,
+				catalogLoaded: true,
+				error: nodes.length
+					? null
+					: "Catalogue vide — redémarrez l’API backend (port 8000).",
+			});
 		} catch (err) {
-			set({ error: err instanceof Error ? err.message : "Erreur catalogue" });
+			set({
+				catalog: [],
+				catalogLoaded: true,
+				error:
+					err instanceof Error
+						? err.message
+						: "Erreur catalogue (API injoignable ?)",
+			});
 		}
 	},
 
@@ -455,7 +504,10 @@ export const useDagStore = create<DagState>((set, get) => ({
 			workflowId: record.id,
 			workflowName: record.name,
 			nodes,
-			edges: (definition.edges || []) as Edge[],
+			edges: normalizeCanvasEdges(
+				(definition.edges || []) as Edge[],
+				get().edgePathStyle,
+			),
 			snapshots: {},
 			lastExecution: null,
 			selectedNodeId: null,
@@ -647,7 +699,10 @@ export const useDagStore = create<DagState>((set, get) => ({
 		});
 		set({
 			nodes,
-			edges: (payload.definition.edges || []) as Edge[],
+			edges: normalizeCanvasEdges(
+				(payload.definition.edges || []) as Edge[],
+				get().edgePathStyle,
+			),
 			workflowName: payload.name,
 			workflowId: null,
 			snapshots: {},

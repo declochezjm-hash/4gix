@@ -1,4 +1,10 @@
-import { type ChangeEvent, useRef } from "react";
+import { Anvil, Moon, Sun } from "lucide-react";
+import { type ChangeEvent, useRef, useState } from "react";
+import {
+	type ColorTheme,
+	getStoredTheme,
+	toggleColorTheme,
+} from "../../lib/theme";
 import { useDagStore } from "../../store/dagStore";
 
 export function TopBar() {
@@ -7,7 +13,6 @@ export function TopBar() {
 	const importLocalWorkflowFile = useDagStore((s) => s.importLocalWorkflowFile);
 	const exportCurrentFmw = useDagStore((s) => s.exportCurrentFmw);
 	const runDag = useDagStore((s) => s.runDag);
-	const openNodePanel = useDagStore((s) => s.openNodePanel);
 	const running = useDagStore((s) => s.running);
 	const error = useDagStore((s) => s.error);
 	const importNotice = useDagStore((s) => s.importNotice);
@@ -19,6 +24,9 @@ export function TopBar() {
 	const setWorkflowName = useDagStore((s) => s.setWorkflowName);
 
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
+	const [colorTheme, setColorTheme] = useState<ColorTheme>(() =>
+		getStoredTheme(),
+	);
 
 	const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
 		const file = event.target.files?.[0];
@@ -29,13 +37,34 @@ export function TopBar() {
 	return (
 		<header className="topbar">
 			<div className="brand">
+				<Anvil
+					className="brand__anvil"
+					size={22}
+					strokeWidth={1.25}
+					aria-hidden
+				/>
 				<span className="logo">4GIx</span>
-				<div>
-					<strong>Recflow Canvas</strong>
-					<small>
-						ETL SIG natif · import .fmw approximatif (exécution 100 % 4GIx)
-					</small>
-				</div>
+				<button
+					type="button"
+					className="theme-toggle"
+					title={
+						colorTheme === "dark"
+							? "Passer en mode clair"
+							: "Passer en mode sombre"
+					}
+					aria-label={
+						colorTheme === "dark"
+							? "Passer en mode clair"
+							: "Passer en mode sombre"
+					}
+					onClick={() => setColorTheme(toggleColorTheme(colorTheme))}
+				>
+					{colorTheme === "dark" ? (
+						<Sun size={18} strokeWidth={2} aria-hidden />
+					) : (
+						<Moon size={18} strokeWidth={2} aria-hidden />
+					)}
+				</button>
 			</div>
 			<div className="topbar__actions">
 				<input
@@ -123,14 +152,6 @@ export function TopBar() {
 				{importNotice ? (
 					<span className="status status--completed">{importNotice}</span>
 				) : null}
-				<button
-					type="button"
-					className="canvas-plus canvas-plus--bar"
-					aria-label="Ajouter un nœud"
-					onClick={() => openNodePanel(null)}
-				>
-					+
-				</button>
 				<button
 					type="button"
 					className="run-btn"

@@ -1,5 +1,8 @@
 import { MiniMap, useReactFlow } from "@xyflow/react";
 
+import type { EdgePathStyle } from "../../lib/canvasEdges";
+import { useDagStore } from "../../store/dagStore";
+
 type CanvasViewControlsProps = {
 	locked: boolean;
 	onToggleLock: () => void;
@@ -10,6 +13,21 @@ export function CanvasViewControls({
 	onToggleLock,
 }: CanvasViewControlsProps) {
 	const { zoomIn, zoomOut, fitView } = useReactFlow();
+	const edgePathStyle = useDagStore((s) => s.edgePathStyle);
+	const setEdgePathStyle = useDagStore((s) => s.setEdgePathStyle);
+
+	const cycleEdgeStyle = () => {
+		const order: EdgePathStyle[] = ["default", "smoothstep", "step"];
+		const index = Math.max(0, order.indexOf(edgePathStyle));
+		const next = order[(index + 1) % order.length];
+		setEdgePathStyle(next);
+	};
+
+	const edgeStyleLabel: Record<EdgePathStyle, string> = {
+		default: "Courbes (Bézier) — clic pour coudes arrondis",
+		smoothstep: "Coudes arrondis — clic pour angles droits",
+		step: "Angles droits — clic pour courbes",
+	};
 
 	return (
 		<div className="canvas-view-controls">
@@ -34,6 +52,18 @@ export function CanvasViewControls({
 					onClick={onToggleLock}
 				>
 					{locked ? "🔒" : "🔓"}
+				</button>
+				<button
+					type="button"
+					title={edgeStyleLabel[edgePathStyle]}
+					className="is-active"
+					onClick={cycleEdgeStyle}
+				>
+					{edgePathStyle === "step"
+						? "⊿"
+						: edgePathStyle === "smoothstep"
+							? "⌐"
+							: "⌒"}
 				</button>
 			</div>
 			<MiniMap

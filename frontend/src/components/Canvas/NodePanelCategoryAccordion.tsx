@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CatalogNode } from "../../lib/api";
 import type { N8nGroup } from "../../lib/n8nCatalog";
 import { catalogSubgroups } from "../../lib/n8nCatalog";
@@ -33,6 +33,19 @@ export function NodePanelCategoryAccordion({
 		}
 		return new Set();
 	});
+
+	useEffect(() => {
+		if (!expanded || nodes.length === 0) return;
+		const subs = catalogSubgroups(nodes);
+		if (!subs.length) return;
+		setOpenSubs((prev) => {
+			if (prev.size > 0) return prev;
+			if (defaultOpenSubgroups) {
+				return new Set(subs.map((sub) => sub.id));
+			}
+			return new Set([subs[0].id]);
+		});
+	}, [expanded, nodes, defaultOpenSubgroups]);
 
 	const toggleSub = (id: string) => {
 		setOpenSubs((prev) => {

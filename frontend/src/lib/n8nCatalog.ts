@@ -174,10 +174,14 @@ export function catalogSubgroups(
 ): { id: string; title: string; nodes: CatalogNode[] }[] {
 	const buckets = new Map<string, CatalogNode[]>();
 	for (const node of nodes) {
+		const legacyGroup =
+			node.palette_group?.trim() ||
+			(node as CatalogNode & { fme_group?: string }).fme_group?.trim() ||
+			"";
 		const title =
 			node.node_type === "python_caller" || node.node_type === "code_node"
 				? "Popular"
-				: node.palette_group?.trim() || "Other";
+				: legacyGroup || "Other";
 		const list = buckets.get(title) || [];
 		list.push(node);
 		buckets.set(title, list);

@@ -1,17 +1,28 @@
 import {
 	Background,
 	BackgroundVariant,
+	ConnectionLineType,
+	type Edge,
+	type FinalConnectionState,
 	type NodeTypes,
 	ReactFlow,
 	ReactFlowProvider,
 } from "@xyflow/react";
-import { type DragEvent, useCallback, useMemo } from "react";
+import {
+	type DragEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+import { canvasDotsColor, readColorTheme } from "../../lib/theme";
 import "@xyflow/react/dist/style.css";
 
 import type { CatalogNode } from "../../lib/api";
 import { isFmwFilename, isSpatialDataFilename } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
 import { CanvasViewControls } from "./CanvasViewControls";
+import { EdgeContextMenu } from "./EdgeContextMenu";
 import { EtlNode } from "./EtlNode";
 import { NodeContextMenu } from "./NodeContextMenu";
 
@@ -24,6 +35,9 @@ function FlowCanvasInner() {
 	const onNodesChange = useDagStore((s) => s.onNodesChange);
 	const onEdgesChange = useDagStore((s) => s.onEdgesChange);
 	const onConnect = useDagStore((s) => s.onConnect);
+	const onReconnect = useDagStore((s) => s.onReconnect);
+	const removeEdge = useDagStore((s) => s.removeEdge);
+	const edgePathStyle = useDagStore((s) => s.edgePathStyle);
 	const selectNode = useDagStore((s) => s.selectNode);
 	const openInspector = useDagStore((s) => s.openInspector);
 	const openNodePanel = useDagStore((s) => s.openNodePanel);
@@ -33,6 +47,32 @@ function FlowCanvasInner() {
 	const importLocalWorkflowFile = useDagStore((s) => s.importLocalWorkflowFile);
 	const importDataFileFromDrop = useDagStore((s) => s.importDataFileFromDrop);
 	const setCanvasLocked = useDagStore((s) => s.setCanvasLocked);
+
+	const [edgeMenu, setEdgeMenu] = useState<{
+		edgeId: string;
+		x: number;
+		y: number;
+	} | null>(null);
+	const [dotColor, setDotColor] = useState(() =>
+		canvasDotsColor(readColorTheme()),
+	);
+
+	useEffect(() => {
+		const syncDots = () => setDotColor(canvasDotsColor(readColorTheme()));
+		syncDots();
+		const observer = new MutationObserver(syncDots);
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["data-theme"],
+		});
+		return () => observer.disconnect();
+	}, []);
+
+	const connectionLineType = useMemo(() => {
+		if (edgePathStyle === "step") return ConnectionLineType.Step;
+		if (edgePathStyle === "smoothstep") return ConnectionLineType.SmoothStep;
+		return ConnectionLineType.Bezier;
+	}, [edgePathStyle]);
 
 	const onDrop = useCallback(
 		(event: DragEvent) => {
@@ -73,11 +113,26 @@ function FlowCanvasInner() {
 
 	const defaultEdgeOptions = useMemo(
 		() => ({
-			type: "default" as const,
+			type: edgePathStyle,
 			animated: false,
+			interactionWidth: 22,
 			style: { stroke: "#8a8d93", strokeWidth: 2 },
 		}),
-		[],
+		[edgePathStyle],
+	);
+
+	const onReconnectEnd = useCallback(
+		(
+			_event: MouseEvent | TouchEvent,
+			edge: Edge,
+			_handleType: string,
+			connectionState: FinalConnectionState,
+		) => {
+			if (!connectionState.isValid) {
+				removeEdge(edge.id);
+			}
+		},
+		[removeEdge],
 	);
 
 	const onConnectEnd = useCallback(
@@ -112,16 +167,35 @@ function FlowCanvasInner() {
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
+				onReconnect={onReconnect}
+				onReconnectEnd={onReconnectEnd}
 				onConnectEnd={onConnectEnd}
+				connectionLineType={connectionLineType}
+				connectionRadius={28}
+				reconnectRadius={22}
+				deleteKeyCode={["Delete", "Backspace"]}
+				edgesFocusable
+				edgesReconnectable={!canvasLocked}
+				onEdgeContextMenu={(event, edge) => {
+					event.preventDefault();
+					setEdgeMenu({
+						edgeId: edge.id,
+						x: event.clientX,
+						y: event.clientY,
+					});
+					closeContextMenu();
+				}}
 				onNodeClick={(_, node) => {
 					selectNode(node.id);
 					closeContextMenu();
+					setEdgeMenu(null);
 				}}
 				onNodeDoubleClick={(_, node) => openInspector(node.id)}
 				onPaneClick={() => {
 					selectNode(null);
 					closeNodePanel();
 					closeContextMenu();
+					setEdgeMenu(null);
 				}}
 				nodeTypes={nodeTypes}
 				nodesDraggable={!canvasLocked}
@@ -136,13 +210,21 @@ function FlowCanvasInner() {
 					variant={BackgroundVariant.Dots}
 					gap={22}
 					size={1.15}
-					color="#3a3b40"
+					color={dotColor}
 				/>
 				<CanvasViewControls
 					locked={canvasLocked}
 					onToggleLock={() => setCanvasLocked(!canvasLocked)}
 				/>
 			</ReactFlow>
+			{edgeMenu ? (
+				<EdgeContextMenu
+					edgeId={edgeMenu.edgeId}
+					x={edgeMenu.x}
+					y={edgeMenu.y}
+					onClose={() => setEdgeMenu(null)}
+				/>
+			) : null}
 			<button
 				type="button"
 				className="canvas-plus"
