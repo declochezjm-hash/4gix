@@ -77,8 +77,8 @@ class AttributeManagerNode(Base4GIxNode):
     node_type = "attribute_manager"
     category = "Transformer"
     is_spatial = False
-    label = "AttributeManager"
-    description = "Créer, renommer, supprimer, retyper et calculer des colonnes (expressions Python)."
+    label = "Edit Fields"
+    description = "Add, rename, remove or modify attributes"
     fme_group = "Attribute Operations"
 
     @classmethod
@@ -127,8 +127,8 @@ class TesterNode(Base4GIxNode):
     node_type = "tester"
     category = "Transformer"
     is_spatial = False
-    label = "Tester"
-    description = "Testeur conditionnel multi-critères AND/OR — ports PASSED / FAILED."
+    label = "If / Filter Condition"
+    description = "Validate conditions on feature fields"
     output_handles = ["passed", "failed"]
     fme_group = "Attribute Operations"
 
@@ -171,8 +171,8 @@ class TestFilterNode(Base4GIxNode):
     node_type = "test_filter"
     category = "Transformer"
     is_spatial = False
-    label = "TestFilter"
-    description = "Branchement IF / ELSE IF / ELSE — un port par condition."
+    label = "Switch / Multi-Condition"
+    description = "Route features based on rules"
     output_handles = ["output1", "output2", "output3", "else"]
     fme_group = "Attribute Operations"
 
@@ -212,8 +212,8 @@ class ListExploderNode(Base4GIxNode):
     node_type = "list_exploder"
     category = "Transformer"
     is_spatial = False
-    label = "ListExploder"
-    description = "Explose une liste d'attributs imbriqués en entités individuelles."
+    label = "Split List Array"
+    description = "Flatten list attributes into features"
     fme_group = "Attribute Operations"
 
     @classmethod
@@ -256,8 +256,8 @@ class CounterNode(Base4GIxNode):
     node_type = "counter"
     category = "Transformer"
     is_spatial = False
-    label = "Counter"
-    description = "Ajoute un identifiant séquentiel incrémental à chaque entité."
+    label = "Increment Counter"
+    description = "Add sequence number or ID"
     fme_group = "Attribute Operations"
 
     @classmethod
@@ -290,8 +290,8 @@ class DuplicateFilterNode(Base4GIxNode):
     node_type = "duplicate_filter"
     category = "Transformer"
     is_spatial = False
-    label = "DuplicateFilter"
-    description = "Filtre les doublons sur une ou plusieurs clés (UNIQUE / DUPLICATE)."
+    label = "Remove Duplicates"
+    description = "Filter out identical records"
     output_handles = ["unique", "duplicate"]
     fme_group = "Attribute Operations"
 

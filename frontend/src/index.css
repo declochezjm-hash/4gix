@@ -401,6 +401,11 @@ body {
 	padding: 0.55rem 0.7rem;
 	font: inherit;
 }
+.n8n-panel__featured {
+	margin-bottom: 0.75rem;
+	padding-bottom: 0.5rem;
+	border-bottom: 1px solid var(--line);
+}
 .n8n-panel__list {
 	overflow: auto;
 	padding: 0 0.75rem 1.2rem;
@@ -463,8 +468,12 @@ body {
 	font-size: 0.82rem;
 }
 .n8n-panel__list small {
+	display: block;
 	color: var(--muted);
 	font-size: 0.68rem;
+	line-height: 1.35;
+	margin-top: 0.12rem;
+	white-space: normal;
 }
 .n8n-panel__empty {
 	color: var(--muted);
@@ -543,6 +552,53 @@ body {
 .n8n-code-pane {
 	background: #1e1e1e;
 }
+.config-form--code {
+	padding: 0;
+	gap: 0;
+}
+.code-editor-param {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	min-height: 0;
+}
+.code-editor-param__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.65rem 1rem;
+	font-size: 0.75rem;
+	color: #a1a1aa;
+}
+.code-editor-param__toolbar label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+.code-editor-param__toolbar select {
+	background: #141416;
+	border: 1px solid #3f3f46;
+	color: #e4e4e7;
+	border-radius: 6px;
+	padding: 0.25rem 0.45rem;
+	font-size: 0.75rem;
+}
+.code-editor-param__hint {
+	margin-left: auto;
+	color: #71717a;
+	font-size: 0.7rem;
+}
+.code-editor-param__surface {
+	border: 1px solid #3f3f46;
+	border-radius: 8px;
+	overflow: hidden;
+	background: #1e1e1e;
+}
+.code-editor-param__note {
+	margin: 0;
+	font-size: 0.72rem;
+	color: #a1a1aa;
+}
 .inspector-pane {
 	padding: 0.75rem 0.85rem;
 	overflow: auto;
@@ -588,6 +644,14 @@ body {
 	overflow: auto;
 	max-height: 42vh;
 	margin-top: 0.5rem;
+}
+.table-wrap--tall {
+	max-height: min(58vh, 520px);
+}
+.table-meta {
+	margin: 0.45rem 0 0;
+	font-size: 0.72rem;
+	color: var(--muted);
 }
 .table-wrap table {
 	width: 100%;

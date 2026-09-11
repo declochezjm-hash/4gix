@@ -46,6 +46,7 @@ from app.nodes.transformers import (
     ZonalStatisticsNode,
 )
 from app.nodes.writers import FileWriter, LogWriter, PostGISWriter
+from app.nodes.transformers.python_caller import PythonCallerNode
 
 NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
     cls.node_type: cls
@@ -88,6 +89,7 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
         CounterNode,
         DuplicateFilterNode,
         ReprojectorNode,
+        PythonCallerNode,
         PostGISWriter,
         FileWriter,
         LogWriter,
@@ -96,6 +98,8 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
 
 
 def get_node_class(node_type: str) -> Type[Base4GIxNode]:
+    if node_type == "code_node":
+        return PythonCallerNode
     if not node_type or node_type not in NODE_REGISTRY:
         known = ", ".join(sorted(NODE_REGISTRY))
         raise KeyError(f"Type de nœud inconnu `{node_type}`. Types disponibles: {known}")

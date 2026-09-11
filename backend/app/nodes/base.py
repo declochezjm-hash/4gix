@@ -224,9 +224,21 @@ def build_snapshot_from_payload(
         if isinstance(payload, dict) and isinstance(payload.get("data"), list):
             metadata.setdefault("record_count", len(payload["data"]))
 
-    output_snapshot = fc if fc is not None else extract_json_preview(
-        payload.get("data") if isinstance(payload, dict) else payload
-    )
+    output_snapshot: Any
+    if fc is not None:
+        output_snapshot = dict(fc)
+        if isinstance(payload, dict):
+            map_geojson = payload.get("map_geojson")
+            if isinstance(map_geojson, dict):
+                output_snapshot["map_geojson"] = map_geojson
+            bbox = (payload.get("metadata") or {}).get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                output_snapshot["bbox"] = bbox
+                metadata.setdefault("bbox", bbox)
+    else:
+        output_snapshot = extract_json_preview(
+            payload.get("data") if isinstance(payload, dict) else payload
+        )
     return NodeSnapshot(
         node_id=node_id,
         node_type=node_type,

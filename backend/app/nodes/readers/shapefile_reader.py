@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict
 
 import geopandas as gpd
 
 from app.core.config import settings
+from app.core.readers.shapefile import shapefile_read_outputs
 from app.nodes.base import Base4GIxNode
 
 
@@ -73,29 +73,29 @@ class ShapefileReader(Base4GIxNode):
             inner_shp = sets[0]["shp_path_in_zip"]
             shp_file = _extract_shapefile_sidecars(path, inner_shp)
             gdf = _read_geodataframe(shp_file)
-            geojson, meta = _geojson_payload(gdf)
+            geojson, map_geojson, meta = _geojson_payload(gdf)
             meta["zip_path"] = str(path)
-            return {"data": geojson, "metadata": meta}
+            return {
+                "data": geojson,
+                "map_geojson": map_geojson,
+                "metadata": meta,
+            }
 
         if not path.is_file():
             raise FileNotFoundError(f"Shapefile introuvable: {path}")
 
         gdf = gpd.read_file(path, encoding=params.get("encoding") or None)
-        if gdf.crs is None:
-            gdf = gdf.set_crs("EPSG:4326")
-        geojson = json.loads(gdf.to_json())
-        return {
-            "data": geojson,
-            "metadata": {
+        geojson, map_geojson, meta = shapefile_read_outputs(gdf)
+        meta.update(
+            {
                 "source": "shapefile",
                 "path": str(path),
                 "zip_path": params.get("zip_path"),
                 "layer_name": params.get("layer_name"),
-                "feature_count": len(gdf),
-                "columns": [col for col in gdf.columns if col != "geometry"],
-                "crs": str(gdf.crs) if gdf.crs else None,
-                "geometry_types": sorted(
-                    {str(value) for value in gdf.geom_type.dropna().unique()},
-                ),
             },
+        )
+        return {
+            "data": geojson,
+            "map_geojson": map_geojson,
+            "metadata": meta,
         }

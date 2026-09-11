@@ -31,8 +31,8 @@ class GeometryValidatorNode(Base4GIxNode):
     node_type = "geometry_validator"
     category = "Transformer"
     is_spatial = True
-    label = "GeometryValidator"
-    description = "Détecte et répare les géométries invalides. Port REJECTED pour les irréparables."
+    label = "Validate Geometry"
+    description = "Detect and repair invalid shapes"
     output_handles = ["output", "rejected"]
     fme_group = "Geometry & Quality"
 

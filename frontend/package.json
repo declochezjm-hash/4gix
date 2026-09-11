@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 5173"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@deck.gl/core": "^9.1.8",
     "@deck.gl/layers": "^9.1.8",
     "@deck.gl/mapbox": "^9.1.8",

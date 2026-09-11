@@ -7,7 +7,7 @@ export type SchemaProperty = {
 	default?: unknown;
 	enum?: string[];
 	enumNames?: string[];
-	format?: string;
+	format?: "epsg" | "slider" | "sql" | "mapping" | "textarea" | "code" | string;
 	minimum?: number;
 	maximum?: number;
 	multipleOf?: number;

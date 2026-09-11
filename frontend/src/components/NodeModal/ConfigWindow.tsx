@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { CodeEditorParam } from "./CodeEditorParam";
+import { defaultCodeForLanguage } from "./codeTemplates";
+
+function isCodeNodeType(nodeType: string): boolean {
+	return nodeType === "python_caller" || nodeType === "code_node";
+}
 
 const EPSG_OPTIONS = [
 	{ value: "EPSG:4326", label: "EPSG:4326 — WGS84" },
@@ -278,9 +284,11 @@ export function ConfigWindow() {
 			<header>
 				<h3>CONFIGURATION</h3>
 				<p>
-					{node.data.schema?.description ||
-						catalogEntry?.description ||
-						node.data.nodeType}
+					{isCodeNodeType(node.data.nodeType)
+						? "Éditeur de code Python / SQL (Monaco) — ce nœud n’est pas un Reader fichier."
+						: node.data.schema?.description ||
+							catalogEntry?.description ||
+							node.data.nodeType}
 				</p>
 				<div className="pane-tabs" role="tablist">
 					<button
@@ -326,6 +334,22 @@ export function ConfigWindow() {
 						Type
 						<input value={node.data.nodeType} readOnly />
 					</label>
+				</form>
+			) : isCodeNodeType(node.data.nodeType) ? (
+				<form className="config-form config-form--code" onSubmit={(e) => e.preventDefault()}>
+					<CodeEditorParam
+						mode={String(node.data.params.mode ?? "all_items")}
+						language={String(node.data.params.language ?? "python")}
+						code={
+							typeof node.data.params.code === "string" &&
+							node.data.params.code.trim()
+								? node.data.params.code
+								: defaultCodeForLanguage(
+										String(node.data.params.language ?? "python"),
+									)
+						}
+						onChange={(patch) => updateNodeParams(node.id, patch)}
+					/>
 				</form>
 			) : (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>

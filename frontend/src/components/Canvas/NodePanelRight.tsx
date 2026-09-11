@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { groupCatalog } from "../../lib/n8nCatalog";
+import { matchesNodeSearch } from "../../config/nodeRegistry";
+import { featuredCatalogNodes, groupCatalog } from "../../lib/n8nCatalog";
 import { useDagStore } from "../../store/dagStore";
+import { NodePanelEntry } from "./NodePanelEntry";
 
 export function NodePanelRight() {
 	const open = useDagStore((s) => s.nodePanelOpen);
 	const closeNodePanel = useDagStore((s) => s.closeNodePanel);
 	const catalog = useDagStore((s) => s.catalog);
 	const insertNodeFromPanel = useDagStore((s) => s.insertNodeFromPanel);
+	const loadCatalog = useDagStore((s) => s.loadCatalog);
 	const pendingConnect = useDagStore((s) => s.pendingConnect);
 	const [query, setQuery] = useState("");
 	const searchRef = useRef<HTMLInputElement | null>(null);
@@ -14,9 +17,10 @@ export function NodePanelRight() {
 	useEffect(() => {
 		if (!open) return;
 		setQuery("");
+		void loadCatalog();
 		const timer = window.setTimeout(() => searchRef.current?.focus(), 40);
 		return () => window.clearTimeout(timer);
-	}, [open]);
+	}, [open, loadCatalog]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -27,15 +31,15 @@ export function NodePanelRight() {
 		return () => window.removeEventListener("keydown", onKey);
 	}, [open, closeNodePanel]);
 
-	const grouped = useMemo(() => {
+	const { featured, grouped } = useMemo(() => {
 		const needle = query.trim().toLowerCase();
 		const filtered = needle
-			? catalog.filter((entry) => {
-					const hay = `${entry.label} ${entry.node_type} ${entry.description} ${entry.fme_group || ""}`.toLowerCase();
-					return hay.includes(needle);
-				})
+			? catalog.filter((entry) => matchesNodeSearch(entry, needle))
 			: catalog;
-		return groupCatalog(filtered);
+		return {
+			featured: needle ? [] : featuredCatalogNodes(catalog),
+			grouped: groupCatalog(filtered),
+		};
 	}, [catalog, query]);
 
 	if (!open) return null;
@@ -68,6 +72,25 @@ export function NodePanelRight() {
 				/>
 			</div>
 			<div className="n8n-panel__list">
+				{featured.length ? (
+					<section className="n8n-panel__featured">
+						<h3>
+							<span style={{ background: "#7C3AED" }}>{"{}"}</span>
+							Code &amp; transformation
+						</h3>
+						<ul>
+							{featured.map((entry) => (
+								<NodePanelEntry
+									key={entry.node_type}
+									entry={entry}
+									accent="#7C3AED"
+									onSelect={insertNodeFromPanel}
+									subtitle="Éditeur Monaco · Python / SQL"
+								/>
+							))}
+						</ul>
+					</section>
+				) : null}
 				{grouped.map(({ group, nodes }) => (
 					<section key={group.id}>
 						<h3>
@@ -79,18 +102,12 @@ export function NodePanelRight() {
 						) : (
 							<ul>
 								{nodes.map((entry) => (
-									<li key={entry.node_type}>
-										<button
-											type="button"
-											onClick={() => insertNodeFromPanel(entry)}
-										>
-											<em style={{ background: group.color }}>{group.glyph}</em>
-											<span>
-												<strong>{entry.label}</strong>
-												<small>{entry.node_type}</small>
-											</span>
-										</button>
-									</li>
+									<NodePanelEntry
+										key={entry.node_type}
+										entry={entry}
+										accent={group.color}
+										onSelect={insertNodeFromPanel}
+									/>
 								))}
 							</ul>
 						)}

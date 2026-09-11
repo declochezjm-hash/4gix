@@ -17,6 +17,8 @@ type MapViewerProps = {
 	onViewChange?: (view: MapViewState) => void;
 	accent?: string;
 	selectedIndex?: number | null;
+	fitBbox?: number[] | null;
+	fitNonce?: number;
 };
 
 const EMPTY: GeoJsonFeatureCollection = {
@@ -56,6 +58,8 @@ export function MapViewer({
 	onViewChange,
 	accent = "#2aa198",
 	selectedIndex = null,
+	fitBbox = null,
+	fitNonce = 0,
 }: MapViewerProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
@@ -191,6 +195,33 @@ export function MapViewer({
 			applyingRef.current = false;
 		});
 	}, [view]);
+
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map) return;
+		if (!fitBbox || fitBbox.length !== 4) return;
+		const applyFit = () => {
+			applyingRef.current = true;
+			map.fitBounds(
+				[
+					[fitBbox[0], fitBbox[1]],
+					[fitBbox[2], fitBbox[3]],
+				],
+				{ padding: 40, maxZoom: 16, duration: 450 },
+			);
+			map.once("idle", () => {
+				applyingRef.current = false;
+				const center = map.getCenter();
+				onViewChangeRef.current?.({
+					longitude: center.lng,
+					latitude: center.lat,
+					zoom: map.getZoom(),
+				});
+			});
+		};
+		if (map.isStyleLoaded()) applyFit();
+		else map.once("load", applyFit);
+	}, [fitBbox, fitNonce]);
 
 	useEffect(() => {
 		const map = mapRef.current;

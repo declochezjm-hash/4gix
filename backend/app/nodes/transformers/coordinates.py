@@ -14,8 +14,8 @@ class ReprojectorNode(Base4GIxNode):
     node_type = "reprojector"
     category = "Transformer"
     is_spatial = True
-    label = "Reprojector"
-    description = "Reprojection dynamique PROJ/PyProj avec détection des unités (degrés ↔ mètres)."
+    label = "Transform Coordinate System"
+    description = "Reproject spatial reference CRS"
     fme_group = "Coordinate Systems"
 
     @classmethod

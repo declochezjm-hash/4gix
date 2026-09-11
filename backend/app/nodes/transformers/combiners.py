@@ -88,8 +88,8 @@ class SpatialRelatorNode(Base4GIxNode):
     node_type = "spatial_relator"
     category = "Transformer"
     is_spatial = True
-    label = "SpatialRelator"
-    description = "Relations spatiales DE-9IM (INTERSECTS, CONTAINS, TOUCHES, WITHIN, DISJOINT, CROSSES)."
+    label = "Spatial Join / Intersect"
+    description = "Match features by location"
     input_handles = ["request", "supplier"]
     output_handles = ["related", "unrelated"]
     fme_group = "Combiners & Joins"

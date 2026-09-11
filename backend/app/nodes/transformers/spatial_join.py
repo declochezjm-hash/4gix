@@ -18,8 +18,8 @@ class SpatialJoinNode(Base4GIxNode):
     node_type = "spatial_join"
     category = "Transformer"
     is_spatial = True
-    label = "Spatial Join"
-    description = "Jointure spatiale Contains / Intersects / Within entre deux couches."
+    label = "Spatial Join / Intersect"
+    description = "Match features by location"
     input_handles: List[str] = ["input_a", "input_b"]
 
     @classmethod

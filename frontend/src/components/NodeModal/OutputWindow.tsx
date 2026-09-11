@@ -18,6 +18,8 @@ export function OutputWindow() {
 			data={data}
 			empty="Aucune sortie. Execute Node pour inspecter fme_feature_type, attributs et géométrie."
 			accent="#22C55E"
+			executionStatus={snapshot?.status}
+			dataKey={selectedNodeId ?? undefined}
 		/>
 	);
 }

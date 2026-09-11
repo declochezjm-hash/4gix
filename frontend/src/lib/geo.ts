@@ -212,6 +212,40 @@ export function crsFromCollection(fc: GeoJsonFeatureCollection | null): string {
 	return crs?.properties?.name || "EPSG:4326";
 }
 
+export function mapGeojsonFromInspection(
+	value: unknown,
+): GeoJsonFeatureCollection | null {
+	if (!value || typeof value !== "object") return null;
+	const record = value as Record<string, unknown>;
+	if (record.map_geojson) return asFeatureCollection(record.map_geojson);
+	return null;
+}
+
+export function bboxFromInspection(value: unknown): number[] | null {
+	if (!value || typeof value !== "object") return null;
+	const record = value as Record<string, unknown>;
+	const raw = record.bbox;
+	if (
+		Array.isArray(raw) &&
+		raw.length === 4 &&
+		raw.every((item) => typeof item === "number" && Number.isFinite(item))
+	) {
+		return raw as number[];
+	}
+	const meta = record.metadata;
+	if (meta && typeof meta === "object") {
+		const fromMeta = (meta as Record<string, unknown>).bbox;
+		if (
+			Array.isArray(fromMeta) &&
+			fromMeta.length === 4 &&
+			fromMeta.every((item) => typeof item === "number" && Number.isFinite(item))
+		) {
+			return fromMeta as number[];
+		}
+	}
+	return null;
+}
+
 export function inspectFeature(
 	feature: GeoJsonFeature | undefined,
 	crsHint?: string,

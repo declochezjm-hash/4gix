@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	asFeatureCollection,
 	asRasterPreview,
+	bboxFromInspection,
 	crsFromCollection,
 	inspectFeature,
 	listPorts,
+	mapGeojsonFromInspection,
 	pickPort,
 	tableRowsFromData,
 } from "../../lib/geo";
@@ -18,6 +20,8 @@ type DataPaneProps = {
 	data: unknown;
 	empty: string;
 	accent?: string;
+	executionStatus?: string;
+	dataKey?: string;
 };
 
 export function DataPane({
@@ -26,6 +30,8 @@ export function DataPane({
 	data,
 	empty,
 	accent,
+	executionStatus,
+	dataKey,
 }: DataPaneProps) {
 	const raster = asRasterPreview(data);
 	const ports = listPorts(data);
@@ -35,14 +41,21 @@ export function DataPane({
 	const [port, setPort] = useState<string>("");
 	const [filter, setFilter] = useState("");
 	const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+	const [mapFitNonce, setMapFitNonce] = useState(0);
 	const mapView = useDagStore((s) => s.mapView);
 	const setMapView = useDagStore((s) => s.setMapView);
 	const activePort = port && ports.includes(port) ? port : ports[0] || "";
 	const scoped = ports.length ? pickPort(data, activePort) : data;
 	const geojson = asFeatureCollection(scoped);
+	const mapGeojson =
+		mapGeojsonFromInspection(scoped) ||
+		mapGeojsonFromInspection(data) ||
+		geojson;
+	const mapBbox =
+		bboxFromInspection(scoped) || bboxFromInspection(data) || undefined;
 	const table = tableRowsFromData(scoped);
 	const hasGeometry = Boolean(
-		geojson?.features.some((feature) => feature.geometry),
+		mapGeojson?.features.some((feature) => feature.geometry),
 	);
 	const selectedFeature =
 		selectedIndex != null ? geojson?.features[selectedIndex] : undefined;
@@ -62,6 +75,29 @@ export function DataPane({
 				),
 			);
 	}, [filter, table.columns, table.rows]);
+
+	const completed =
+		executionStatus === "COMPLETED" || executionStatus === "success";
+
+	useEffect(() => {
+		setSelectedIndex(null);
+		setFilter("");
+		if (raster) {
+			setTab("raster");
+			return;
+		}
+		if (completed && table.rows.length > 0) {
+			setTab("table");
+			return;
+		}
+		setTab("schema");
+	}, [dataKey, completed, raster, table.rows.length]);
+
+	const openMapTab = () => {
+		setMapView(null);
+		setMapFitNonce((value) => value + 1);
+		setTab("map");
+	};
 
 	return (
 		<section className="inspector-pane">
@@ -111,7 +147,7 @@ export function DataPane({
 					<button
 						type="button"
 						className={tab === "map" ? "is-active" : ""}
-						onClick={() => setTab("map")}
+						onClick={openMapTab}
 					>
 						Carte
 					</button>
@@ -154,11 +190,13 @@ export function DataPane({
 				hasGeometry ? (
 					<div className="map-embed map-embed--tall">
 						<MapViewer
-							geojson={geojson}
+							geojson={mapGeojson}
 							view={mapView}
 							onViewChange={setMapView}
 							accent={accent}
 							selectedIndex={selectedIndex}
+							fitBbox={mapBbox}
+							fitNonce={mapFitNonce}
 						/>
 					</div>
 				) : (
@@ -174,8 +212,8 @@ export function DataPane({
 						<div>
 							<dt>Bounding Box</dt>
 							<dd>
-								{inspect.bbox
-									? `[${inspect.bbox.map((n) => n.toFixed(5)).join(", ")}]`
+								{(mapBbox || inspect.bbox)
+									? `[${(mapBbox || inspect.bbox)!.map((n) => n.toFixed(5)).join(", ")}]`
 									: "—"}
 							</dd>
 						</div>
@@ -195,11 +233,13 @@ export function DataPane({
 					{hasGeometry ? (
 						<div className="map-embed">
 							<MapViewer
-								geojson={geojson}
+								geojson={mapGeojson}
 								view={mapView}
 								onViewChange={setMapView}
 								accent={accent}
 								selectedIndex={selectedIndex}
+								fitBbox={mapBbox}
+								fitNonce={mapFitNonce}
 							/>
 						</div>
 					) : null}
@@ -209,70 +249,86 @@ export function DataPane({
 						value={filter}
 						onChange={(event) => setFilter(event.target.value)}
 					/>
-					{filteredRows.length ? (
-						<div className="table-wrap">
-							<table>
-								<thead>
-									<tr>
-										{table.columns.map((column) => (
-											<th key={column}>{column}</th>
-										))}
-									</tr>
-								</thead>
-								<tbody>
-									{filteredRows.slice(0, 80).map(({ row, index }) => (
-										<tr
-											key={index}
-											className={
-												selectedIndex === index ? "is-selected-feature" : ""
-											}
-											onClick={() => setSelectedIndex(index)}
-										>
-											{table.columns.map((column) => (
-												<td key={column}>{formatCell(row[column])}</td>
-											))}
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</div>
-					) : (
-						<div className="empty">Aucune entité à inspecter.</div>
-					)}
+					<AttributeTable
+						columns={table.columns}
+						rows={filteredRows}
+						totalRows={table.rows.length}
+						selectedIndex={selectedIndex}
+						onSelectRow={setSelectedIndex}
+					/>
 				</div>
 			) : table.rows.length ? (
-				<div className="table-wrap">
-					<table>
-						<thead>
-							<tr>
-								{table.columns.map((column) => (
-									<th key={column}>{column}</th>
-								))}
-							</tr>
-						</thead>
-						<tbody>
-							{table.rows.slice(0, 80).map((row, index) => (
-								<tr
-									key={table.columns
-										.map((column) => String(row[column] ?? ""))
-										.join("\0")}
-									className={
-										selectedIndex === index ? "is-selected-feature" : ""
-									}
-									onClick={() => setSelectedIndex(index)}
-								>
-									{table.columns.map((column) => (
-										<td key={column}>{formatCell(row[column])}</td>
-									))}
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
+				<AttributeTable
+					columns={table.columns}
+					rows={filteredRows}
+					totalRows={table.rows.length}
+					selectedIndex={selectedIndex}
+					onSelectRow={setSelectedIndex}
+					filteredCount={filteredRows.length}
+				/>
 			) : (
 				<pre>{JSON.stringify(stripBase64(data), null, 2)}</pre>
 			)}
 		</section>
+	);
+}
+
+type AttributeTableProps = {
+	columns: string[];
+	rows: { row: Record<string, unknown>; index: number }[];
+	totalRows: number;
+	selectedIndex: number | null;
+	onSelectRow: (index: number) => void;
+	filteredCount?: number;
+};
+
+function AttributeTable({
+	columns,
+	rows,
+	totalRows,
+	selectedIndex,
+	onSelectRow,
+	filteredCount,
+}: AttributeTableProps) {
+	if (!rows.length) {
+		return <div className="empty">Aucune entité à inspecter.</div>;
+	}
+	const shown = filteredCount ?? rows.length;
+	return (
+		<>
+			<p className="table-meta">
+				{shown === totalRows
+					? `${totalRows} ligne${totalRows > 1 ? "s" : ""}`
+					: `${shown} / ${totalRows} lignes`}
+				{` · ${columns.length} colonne${columns.length > 1 ? "s" : ""}`}
+			</p>
+			<div className="table-wrap table-wrap--tall">
+				<table>
+					<thead>
+						<tr>
+							{columns.map((column) => (
+								<th key={column}>{column}</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{rows.map(({ row, index }) => (
+							<tr
+								key={index}
+								className={
+									selectedIndex === index ? "is-selected-feature" : ""
+								}
+								onClick={() => onSelectRow(index)}
+							>
+								{columns.map((column) => (
+									<td key={column}>{formatCell(row[column])}</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		</>
 	);
 }
 

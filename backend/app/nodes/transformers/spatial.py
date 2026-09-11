@@ -13,8 +13,8 @@ class ReprojectTransformer(Base4GIxNode):
     node_type = "reproject"
     category = "Transformer"
     is_spatial = True
-    label = "Reprojection"
-    description = "Reprojette une couche vers un système de coordonnées cible."
+    label = "Transform Coordinate System"
+    description = "Reproject spatial reference CRS"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -65,8 +65,8 @@ class BufferTransformer(Base4GIxNode):
     node_type = "buffer"
     category = "Transformer"
     is_spatial = True
-    label = "Buffer"
-    description = "Calcule un tampon autour des géométries (unités du CRS courant)."
+    label = "Create Buffer"
+    description = "Generate spatial proximity zones"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -129,8 +129,8 @@ class FilterTransformer(Base4GIxNode):
     node_type = "attribute_filter"
     category = "Transformer"
     is_spatial = False
-    label = "Filtre attributaire"
-    description = "Filtre les entités selon une égalité attributaire."
+    label = "Filter by Attribute"
+    description = "Split stream by attribute values"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -207,8 +207,8 @@ class AttributeMapperTransformer(Base4GIxNode):
     node_type = "attribute_mapper"
     category = "Transformer"
     is_spatial = False
-    label = "Mapping attributaire"
-    description = "Renomme ou conserve un sous-ensemble de champs."
+    label = "Map Values"
+    description = "Replace attribute values with lookup"
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:

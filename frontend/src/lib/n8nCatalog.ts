@@ -38,6 +38,8 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	list_exploder: "data",
 	counter: "data",
 	duplicate_filter: "data",
+	python_caller: "data",
+	code_node: "data",
 	geometry_validator: "gis",
 	geometry_filter: "gis",
 	snapper: "gis",
@@ -73,6 +75,19 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	rest_wfs_reader: "io",
 };
 
+const TYPE_GLYPH: Record<string, string> = {
+	python_caller: "{}",
+	code_node: "{}",
+};
+
+export function entryGlyph(
+	entry: Pick<CatalogNode, "node_type" | "category">,
+): string {
+	const type = entry.node_type || "";
+	if (TYPE_GLYPH[type]) return TYPE_GLYPH[type];
+	return groupMeta(groupIdOf(entry)).glyph;
+}
+
 export function groupIdOf(entry: Pick<CatalogNode, "node_type" | "category">): N8nGroupId {
 	if (TYPE_GROUP[entry.node_type]) return TYPE_GROUP[entry.node_type];
 	if (entry.category === "Reader" || entry.category === "Writer") return "io";
@@ -88,12 +103,28 @@ export function nodeChrome(entry: {
 	node_type?: string;
 	category: string;
 }): N8nGroup {
-	return groupMeta(
+	const nodeType = entry.nodeType || entry.node_type || "";
+	const group = groupMeta(
 		groupIdOf({
-			node_type: entry.nodeType || entry.node_type || "",
+			node_type: nodeType,
 			category: entry.category as CatalogNode["category"],
 		}),
 	);
+	const glyph = TYPE_GLYPH[nodeType];
+	return glyph ? { ...group, glyph } : group;
+}
+
+const CATALOG_PRIORITY = ["python_caller"];
+
+function sortCatalogNodes(nodes: CatalogNode[]): CatalogNode[] {
+	return [...nodes].sort((left, right) => {
+		const li = CATALOG_PRIORITY.indexOf(left.node_type);
+		const ri = CATALOG_PRIORITY.indexOf(right.node_type);
+		const lRank = li === -1 ? 999 : li;
+		const rRank = ri === -1 ? 999 : ri;
+		if (lRank !== rRank) return lRank - rRank;
+		return left.label.localeCompare(right.label, "fr");
+	});
 }
 
 export function groupCatalog(nodes: CatalogNode[]): {
@@ -102,6 +133,14 @@ export function groupCatalog(nodes: CatalogNode[]): {
 }[] {
 	return N8N_GROUPS.map((group) => ({
 		group,
-		nodes: nodes.filter((node) => groupIdOf(node) === group.id),
+		nodes: sortCatalogNodes(
+			nodes.filter((node) => groupIdOf(node) === group.id),
+		),
 	}));
+}
+
+export function featuredCatalogNodes(nodes: CatalogNode[]): CatalogNode[] {
+	return sortCatalogNodes(
+		nodes.filter((node) => CATALOG_PRIORITY.includes(node.node_type)),
+	);
 }

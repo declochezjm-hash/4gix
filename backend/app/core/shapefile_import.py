@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 import zipfile
 from io import BytesIO
@@ -13,11 +12,10 @@ import geopandas as gpd
 
 from app.core.config import settings
 from app.core.paths import workspace_subdir
+from app.core.readers.shapefile import shapefile_read_outputs
 
 SHAPEFILE_REQUIRED = {".shp", ".shx", ".dbf"}
 SHAPEFILE_SIDECAR = {".prj", ".cpg", ".sbn", ".sbx", ".xml", ".shp.xml", ".qix", ".fix"}
-
-MAX_PREVIEW_FEATURES = 2500
 
 
 def _posix(path: str) -> str:
@@ -112,30 +110,10 @@ def _read_geodataframe(shp_path: Path) -> gpd.GeoDataFrame:
     return gdf
 
 
-def _geojson_payload(gdf: gpd.GeoDataFrame) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    full = json.loads(gdf.to_json())
-    feature_count = len(gdf)
-    bounds = list(gdf.total_bounds) if len(gdf) else None
-    metadata: Dict[str, Any] = {
-        "source": "shapefile",
-        "feature_count": feature_count,
-        "columns": [col for col in gdf.columns if col != "geometry"],
-        "crs": str(gdf.crs) if gdf.crs else None,
-        "bounds": bounds,
-        "geometry_types": sorted({str(value) for value in gdf.geom_type.dropna().unique()}),
-    }
-    features = full.get("features") or []
-    if len(features) > MAX_PREVIEW_FEATURES:
-        preview = {
-            "type": "FeatureCollection",
-            "features": features[:MAX_PREVIEW_FEATURES],
-        }
-        if gdf.crs:
-            preview["crs"] = full.get("crs")
-        metadata["preview_truncated"] = True
-        metadata["preview_feature_count"] = MAX_PREVIEW_FEATURES
-        return preview, metadata
-    return full, metadata
+def _geojson_payload(gdf: gpd.GeoDataFrame) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    native, map_geojson, meta = shapefile_read_outputs(gdf)
+    metadata: Dict[str, Any] = {"source": "shapefile", **meta}
+    return native, map_geojson, metadata
 
 
 def import_shapefile_zip_bytes(raw: bytes, *, filename: str) -> Dict[str, Any]:
@@ -162,7 +140,7 @@ def import_shapefile_zip_bytes(raw: bytes, *, filename: str) -> Dict[str, Any]:
     inner_shp = primary["shp_path_in_zip"]
     shp_path = _extract_shapefile_sidecars(zip_path, inner_shp)
     gdf = _read_geodataframe(shp_path)
-    geojson, metadata = _geojson_payload(gdf)
+    geojson, map_geojson, metadata = _geojson_payload(gdf)
     metadata.update(
         {
             "zip_path": str(zip_path),
@@ -183,6 +161,7 @@ def import_shapefile_zip_bytes(raw: bytes, *, filename: str) -> Dict[str, Any]:
         "filename": filename,
         "label": f"Shapefile — {label}",
         "geojson": geojson,
+        "map_geojson": map_geojson,
         "metadata": metadata,
         "suggested_node": {
             "node_type": "shapefile_reader",

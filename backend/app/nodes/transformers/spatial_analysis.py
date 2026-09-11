@@ -44,8 +44,8 @@ class BuffererNode(Base4GIxNode):
     node_type = "bufferer"
     category = "Transformer"
     is_spatial = True
-    label = "Bufferer"
-    description = "Zones tampons plates ou arrondies. Distance en mètres (reprojection auto si WGS84)."
+    label = "Create Buffer"
+    description = "Generate spatial proximity zones"
     fme_group = "Spatial Analysis"
 
     @classmethod
@@ -147,8 +147,8 @@ class DissolverNode(Base4GIxNode):
     node_type = "dissolver"
     category = "Transformer"
     is_spatial = True
-    label = "Dissolver"
-    description = "Fusionne les polygones contigus partageant des attributs communs."
+    label = "Merge Geometries"
+    description = "Dissolve boundaries based on attributes"
     fme_group = "Spatial Analysis"
 
     @classmethod
@@ -189,8 +189,8 @@ class AreaOnAreaOverlayerNode(Base4GIxNode):
     node_type = "area_on_area_overlayer"
     category = "Transformer"
     is_spatial = True
-    label = "AreaOnAreaOverlayer"
-    description = "Intersection croisée N×N de polygones avec conservation des identifiants d'origine."
+    label = "Overlay Polygons"
+    description = "Intersect and combine overlapping areas"
     fme_group = "Spatial Analysis"
 
     @classmethod
@@ -323,8 +323,8 @@ class BoundingBoxReplacerNode(Base4GIxNode):
     node_type = "bounding_box_replacer"
     category = "Transformer"
     is_spatial = True
-    label = "BoundingBoxReplacer"
-    description = "Remplace la géométrie par son emprise rectangulaire (Envelope)."
+    label = "Extract Bounding Box"
+    description = "Replace geometry with envelope bounds"
     fme_group = "Spatial Analysis"
 
     @classmethod

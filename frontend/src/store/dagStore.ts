@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { create } from "zustand";
 
+import { enrichCatalog } from "../config/nodeRegistry";
 import {
 	type CatalogNode,
 	type ExecutionResult,
@@ -416,7 +417,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 	loadCatalog: async () => {
 		try {
 			const catalog = await fetchCatalog();
-			set({ catalog: catalog.nodes, error: null });
+			set({ catalog: enrichCatalog(catalog.nodes), error: null });
 		} catch (err) {
 			set({ error: err instanceof Error ? err.message : "Erreur catalogue" });
 		}

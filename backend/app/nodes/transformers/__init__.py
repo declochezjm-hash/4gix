@@ -36,6 +36,7 @@ from app.nodes.transformers.spatial_analysis import (
     GeneralizerNode,
     LineOnLineOverlayerNode,
 )
+from app.nodes.transformers.python_caller import CodeNode, PythonCallerNode
 from app.nodes.transformers.spatial_join import SpatialJoinNode
 
 FME_TRANSFORMERS = [
@@ -62,6 +63,7 @@ FME_TRANSFORMERS = [
     CounterNode,
     DuplicateFilterNode,
     ReprojectorNode,
+    PythonCallerNode,
 ]
 
 __all__ = [
