@@ -7,6 +7,7 @@ import {
 	type NodeTypes,
 	ReactFlow,
 	ReactFlowProvider,
+	useReactFlow,
 } from "@xyflow/react";
 import {
 	type DragEvent,
@@ -21,12 +22,55 @@ import "@xyflow/react/dist/style.css";
 import type { CatalogNode } from "../../lib/api";
 import { isFmwFilename, isSpatialDataFilename } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
 import { EdgeContextMenu } from "./EdgeContextMenu";
 import { EtlNode } from "./EtlNode";
 import { NodeContextMenu } from "./NodeContextMenu";
 
 const nodeTypes = { etl: EtlNode } as NodeTypes;
+
+const FIT_VIEW_OPTIONS = {
+	padding: 0.14,
+	minZoom: 0.02,
+	maxZoom: 1.2,
+	duration: 280,
+} as const;
+
+function CanvasViewportSync() {
+	const nodes = useDagStore((s) => s.nodes);
+	const viewportFitRequest = useDagStore((s) => s.viewportFitRequest);
+	const canvasPaginationEnabled = useDagStore((s) => s.canvasPaginationEnabled);
+	const canvasPages = useDagStore((s) => s.canvasPages);
+	const canvasPageIndex = useDagStore((s) => s.canvasPageIndex);
+	const { fitView } = useReactFlow();
+
+	useEffect(() => {
+		if (!nodes.length) return;
+		const timer = window.setTimeout(() => {
+			const pageIds = canvasPages[canvasPageIndex];
+			if (canvasPaginationEnabled && pageIds?.length) {
+				const visible = new Set(pageIds);
+				void fitView({
+					...FIT_VIEW_OPTIONS,
+					nodes: nodes.filter((node) => visible.has(node.id)),
+				});
+				return;
+			}
+			void fitView(FIT_VIEW_OPTIONS);
+		}, 60);
+		return () => window.clearTimeout(timer);
+	}, [
+		viewportFitRequest,
+		canvasPageIndex,
+		canvasPaginationEnabled,
+		canvasPages,
+		nodes,
+		fitView,
+	]);
+
+	return null;
+}
 
 function FlowCanvasInner() {
 	const nodes = useDagStore((s) => s.nodes);
@@ -47,6 +91,42 @@ function FlowCanvasInner() {
 	const importLocalWorkflowFile = useDagStore((s) => s.importLocalWorkflowFile);
 	const importDataFileFromDrop = useDagStore((s) => s.importDataFileFromDrop);
 	const setCanvasLocked = useDagStore((s) => s.setCanvasLocked);
+	const canvasPaginationEnabled = useDagStore((s) => s.canvasPaginationEnabled);
+	const canvasPages = useDagStore((s) => s.canvasPages);
+	const canvasPageIndex = useDagStore((s) => s.canvasPageIndex);
+
+	const visibleIdSet = useMemo(() => {
+		if (!canvasPaginationEnabled || !canvasPages.length) return null;
+		return new Set(canvasPages[canvasPageIndex] ?? []);
+	}, [canvasPaginationEnabled, canvasPages, canvasPageIndex]);
+
+	const displayNodes = useMemo(
+		() =>
+			nodes.map((node) => ({
+				...node,
+				hidden: visibleIdSet ? !visibleIdSet.has(node.id) : false,
+			})),
+		[nodes, visibleIdSet],
+	);
+
+	const displayEdges = useMemo(
+		() =>
+			edges.map((edge) => {
+				const hidden =
+					visibleIdSet &&
+					(!visibleIdSet.has(edge.source) || !visibleIdSet.has(edge.target));
+				return {
+					...edge,
+					hidden: Boolean(hidden),
+					style: {
+						...(edge.style || {}),
+						stroke: "#9aa3af",
+						strokeWidth: canvasPaginationEnabled ? 2.75 : 2,
+					},
+				};
+			}),
+		[edges, visibleIdSet, canvasPaginationEnabled],
+	);
 
 	const [edgeMenu, setEdgeMenu] = useState<{
 		edgeId: string;
@@ -162,8 +242,8 @@ function FlowCanvasInner() {
 			onDrop={onDrop}
 		>
 			<ReactFlow
-				nodes={nodes}
-				edges={edges}
+				nodes={displayNodes}
+				edges={displayEdges}
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
@@ -201,10 +281,14 @@ function FlowCanvasInner() {
 				nodesDraggable={!canvasLocked}
 				nodesConnectable={!canvasLocked}
 				elementsSelectable={!canvasLocked}
-				fitView
+				minZoom={0.02}
+				maxZoom={2}
+				elevateEdgesOnSelect
+				elevateNodesOnSelect
 				defaultEdgeOptions={defaultEdgeOptions}
 				connectionLineStyle={{ stroke: "#8a8d93", strokeWidth: 2 }}
 			>
+				<CanvasViewportSync />
 				<Background
 					id="n8n-dots"
 					variant={BackgroundVariant.Dots}
@@ -234,6 +318,7 @@ function FlowCanvasInner() {
 			>
 				+
 			</button>
+			<CanvasPageNav />
 			<NodeContextMenu />
 		</div>
 	);

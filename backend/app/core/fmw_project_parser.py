@@ -477,12 +477,21 @@ def _normalize_canvas_positions(nodes: List[dict]) -> None:
     min_x, min_y = min(xs), min(ys)
     max_y = max(ys)
     flip_y = max_y <= 0 and min_y < 0
+    scaled: List[Tuple[float, float]] = []
     for node in nodes:
         x = float(node["position"]["x"]) - min_x + 80.0
         y = float(node["position"]["y"]) - min_y + 80.0
         if flip_y:
             y = (max_y - float(node["position"]["y"])) + 80.0
-        node["position"] = {"x": x, "y": y}
+        scaled.append((x, y))
+    xs2 = [p[0] for p in scaled]
+    ys2 = [p[1] for p in scaled]
+    span = max(max(xs2) - min(xs2), max(ys2) - min(ys2), 1.0)
+    # FME place parfois des milliers de pixels d'écart — réduit pour le canvas web.
+    target_span = 4200.0
+    scale = min(1.0, target_span / span)
+    for node, (x, y) in zip(nodes, scaled, strict=True):
+        node["position"] = {"x": x * scale, "y": y * scale}
 
 
 def _layout_hierarchical(nodes: List[dict], edges: List[dict]) -> None:

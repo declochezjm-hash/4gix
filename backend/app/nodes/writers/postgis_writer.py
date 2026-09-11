@@ -52,7 +52,11 @@ class PostGISWriter(Base4GIxNode):
         data = unwrap_input_data(inputs)
         fc = _as_feature_collection(data)
         if fc is None:
-            raise ValueError("Aucune géométrie à écrire dans PostGIS.")
+            raise ValueError(
+                "Aucune géométrie à écrire dans PostGIS. "
+                "Reliez un Reader ou un Transform en amont de ce writer "
+                "et vérifiez que le flux contient des entités spatiales."
+            )
 
         schema_name = simple_identifier(params.get("schema_name") or "gix_output")
         table = simple_identifier(params.get("table") or "output_layer")

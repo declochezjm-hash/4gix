@@ -122,9 +122,21 @@ export function NodePanelRight() {
 				</div>
 			) : null}
 			<div className="n8n-panel__list n8n-panel__list--accordion">
-				{searching ? (
-					grouped.map(({ group, nodes }) =>
-						nodes.length === 0 ? null : (
+				{searching
+					? grouped.map(({ group, nodes }) =>
+							nodes.length === 0 ? null : (
+								<NodePanelCategoryAccordion
+									key={group.id}
+									group={group}
+									nodes={nodes}
+									expanded={expandedGroups.has(group.id)}
+									onToggle={() => toggleGroup(group.id)}
+									onSelectNode={insertNodeFromPanel}
+									defaultOpenSubgroups
+								/>
+							),
+						)
+					: grouped.map(({ group, nodes }) => (
 							<NodePanelCategoryAccordion
 								key={group.id}
 								group={group}
@@ -132,22 +144,8 @@ export function NodePanelRight() {
 								expanded={expandedGroups.has(group.id)}
 								onToggle={() => toggleGroup(group.id)}
 								onSelectNode={insertNodeFromPanel}
-								defaultOpenSubgroups
 							/>
-						),
-					)
-				) : (
-					grouped.map(({ group, nodes }) => (
-						<NodePanelCategoryAccordion
-							key={group.id}
-							group={group}
-							nodes={nodes}
-							expanded={expandedGroups.has(group.id)}
-							onToggle={() => toggleGroup(group.id)}
-							onSelectNode={insertNodeFromPanel}
-						/>
-					))
-				)}
+						))}
 				{searching && !grouped.some(({ nodes }) => nodes.length > 0) ? (
 					<p className="n8n-panel__empty">
 						Aucun nœud ne correspond à la recherche.

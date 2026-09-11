@@ -22,6 +22,7 @@ export function TopBar() {
 	const workflowId = useDagStore((s) => s.workflowId);
 	const workflowName = useDagStore((s) => s.workflowName);
 	const setWorkflowName = useDagStore((s) => s.setWorkflowName);
+	const setAppView = useDagStore((s) => s.setAppView);
 
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [colorTheme, setColorTheme] = useState<ColorTheme>(() =>
@@ -67,6 +68,14 @@ export function TopBar() {
 				</button>
 			</div>
 			<div className="topbar__actions">
+				<button
+					type="button"
+					className="ghost-btn"
+					onClick={() => setAppView("overview")}
+					title="Liste de tous les nœuds et workflows enregistrés"
+				>
+					Vue d'ensemble
+				</button>
 				<input
 					className="workflow-name"
 					value={workflowName}

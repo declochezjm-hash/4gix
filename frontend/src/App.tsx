@@ -3,6 +3,8 @@ import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
 import { TopBar } from "./components/Header/TopBar";
 import { NodeModal } from "./components/NodeModal/NodeModal";
+import { AppSidebar } from "./components/Shell/AppSidebar";
+import { ProjectOverview } from "./components/Shell/ProjectOverview";
 import { isFmwFilename } from "./lib/api";
 import { useDagStore } from "./store/dagStore";
 
@@ -19,6 +21,7 @@ export default function App() {
 	const toggleNodeDisabled = useDagStore((s) => s.toggleNodeDisabled);
 	const renameSelectedNode = useDagStore((s) => s.renameSelectedNode);
 	const tidyUpWorkflow = useDagStore((s) => s.tidyUpWorkflow);
+	const appView = useDagStore((s) => s.appView);
 	const [fmwDragOver, setFmwDragOver] = useState(false);
 
 	const handleFmwDrop = (file: File | undefined) => {
@@ -86,36 +89,43 @@ export default function App() {
 
 	return (
 		<div className="app-shell">
-			<TopBar />
-			<div
-				className={`workspace${fmwDragOver ? " workspace--fmw-drop" : ""}`}
-				onDragOver={(event) => {
-					if (!event.dataTransfer.types.includes("Files")) return;
-					event.preventDefault();
-					event.dataTransfer.dropEffect = "copy";
-					setFmwDragOver(true);
-				}}
-				onDragLeave={(event) => {
-					const next = event.relatedTarget as Element | null;
-					if (next && event.currentTarget.contains(next)) return;
-					setFmwDragOver(false);
-				}}
-				onDrop={(event) => {
-					event.preventDefault();
-					setFmwDragOver(false);
-					handleFmwDrop(event.dataTransfer.files?.[0]);
-				}}
-			>
-				<main className="workspace__main">
-					{fmwDragOver ? (
-						<div className="fmw-drop-overlay" aria-hidden>
-							Déposer un projet (.fmw / .json)
-						</div>
-					) : null}
-					<FlowCanvas />
-					<NodePanelRight />
-					<NodeModal />
-				</main>
+			<AppSidebar />
+			<div className="app-main">
+				<TopBar />
+				{appView === "overview" ? (
+					<ProjectOverview />
+				) : (
+					<div
+						className={`workspace${fmwDragOver ? " workspace--fmw-drop" : ""}`}
+						onDragOver={(event) => {
+							if (!event.dataTransfer.types.includes("Files")) return;
+							event.preventDefault();
+							event.dataTransfer.dropEffect = "copy";
+							setFmwDragOver(true);
+						}}
+						onDragLeave={(event) => {
+							const next = event.relatedTarget as Element | null;
+							if (next && event.currentTarget.contains(next)) return;
+							setFmwDragOver(false);
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							setFmwDragOver(false);
+							handleFmwDrop(event.dataTransfer.files?.[0]);
+						}}
+					>
+						<main className="workspace__main">
+							{fmwDragOver ? (
+								<div className="fmw-drop-overlay" aria-hidden>
+									Déposer un projet (.fmw / .json)
+								</div>
+							) : null}
+							<FlowCanvas />
+							<NodePanelRight />
+							<NodeModal />
+						</main>
+					</div>
+				)}
 			</div>
 		</div>
 	);

@@ -41,7 +41,14 @@ export function CanvasViewControls({
 				<button
 					type="button"
 					title="Fit view"
-					onClick={() => fitView({ padding: 0.2 })}
+					onClick={() =>
+						fitView({
+							padding: 0.14,
+							minZoom: 0.02,
+							maxZoom: 1.2,
+							duration: 280,
+						})
+					}
 				>
 					⤢
 				</button>

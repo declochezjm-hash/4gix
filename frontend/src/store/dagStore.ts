@@ -40,6 +40,12 @@ import {
 	normalizeCanvasEdges,
 	stripEdgesFromSourceHandle,
 } from "../lib/canvasEdges";
+import {
+	layoutNodesByLayer,
+	PAGINATION_NODE_THRESHOLD,
+	positionsOverlapRatio,
+	splitWorkflowIntoPages,
+} from "../lib/workflowPagination";
 
 type NodeStatus = NonNullable<FlowNodeData["status"]>;
 
@@ -53,6 +59,8 @@ export type ContextMenuState = {
 	x: number;
 	y: number;
 };
+
+export type AppView = "editor" | "overview";
 
 type DagState = {
 	nodes: Node<FlowNodeData>[];
@@ -75,6 +83,11 @@ type DagState = {
 	nodeClipboard: Node<FlowNodeData> | null;
 	canvasLocked: boolean;
 	edgePathStyle: EdgePathStyle;
+	viewportFitRequest: number;
+	canvasPages: string[][];
+	canvasPageIndex: number;
+	canvasPaginationEnabled: boolean;
+	appView: AppView;
 	mapView: MapViewState | null;
 	onNodesChange: (changes: NodeChange<Node<FlowNodeData>>[]) => void;
 	onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
@@ -111,6 +124,12 @@ type DagState = {
 	toggleNodeDisabled: (id: string) => void;
 	renameSelectedNode: (id: string) => void;
 	tidyUpWorkflow: () => void;
+	rebuildCanvasPages: () => void;
+	setCanvasPage: (index: number) => void;
+	setCanvasPaginationEnabled: (enabled: boolean) => void;
+	setAppView: (view: AppView) => void;
+	focusNodeOnCanvas: (nodeId: string) => void;
+	newWorkflow: () => void;
 	loadImportedDefinition: (payload: FmwImportResult) => void;
 	importFmwFromFile: (file: File) => Promise<void>;
 	importLocalWorkflowFile: (file: File) => Promise<void>;
@@ -170,6 +189,23 @@ function activeEdges(edges: Edge[], nodes: Node<FlowNodeData>[]) {
 	return edges.filter(
 		(edge) => activeIds.has(edge.source) && activeIds.has(edge.target),
 	);
+}
+
+function orphanWriterNodes(nodes: Node<FlowNodeData>[], edges: Edge[]) {
+	const incoming = new Set(edges.map((edge) => edge.target));
+	return activeNodes(nodes).filter((node) => {
+		const nodeType = (node.data.nodeType || "").toLowerCase();
+		const category = (node.data.category || "").toLowerCase();
+		const isWriter =
+			nodeType.endsWith("_writer") ||
+			category === "writer" ||
+			nodeType.includes("writer");
+		return isWriter && !incoming.has(node.id);
+	});
+}
+
+function bumpViewportFit(get: () => DagState) {
+	return get().viewportFitRequest + 1;
 }
 
 function topologicalLayers(
@@ -283,6 +319,11 @@ export const useDagStore = create<DagState>((set, get) => ({
 	nodeClipboard: null,
 	canvasLocked: false,
 	edgePathStyle: "default",
+	viewportFitRequest: 0,
+	canvasPages: [],
+	canvasPageIndex: 0,
+	canvasPaginationEnabled: false,
+	appView: "editor",
 	mapView: null,
 
 	onNodesChange: (changes) =>
@@ -513,7 +554,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 			selectedNodeId: null,
 			inspectorOpen: false,
 			nodePanelOpen: false,
+			viewportFitRequest: bumpViewportFit(get),
 		});
+		get().rebuildCanvasPages();
 	},
 
 	saveCurrentWorkflow: async () => {
@@ -538,6 +581,17 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	runDag: async () => {
+		const orphans = orphanWriterNodes(get().nodes, get().edges);
+		if (orphans.length > 0) {
+			const sample = orphans
+				.slice(0, 3)
+				.map((node) => node.data.label || node.id)
+				.join(", ");
+			set({
+				error: `${orphans.length} writer(s) sans liaison entrante (${sample}${orphans.length > 3 ? "…" : ""}). Reliez un flux en amont ou désactivez le nœud. Après import .fmw, vérifiez les liens (menu nœud → Tidy up workflow).`,
+			});
+			return;
+		}
 		await executeViaSocket(get, set);
 	},
 
@@ -651,24 +705,91 @@ export const useDagStore = create<DagState>((set, get) => ({
 	tidyUpWorkflow: () => {
 		const { nodes, edges } = get();
 		if (!nodes.length) return;
-		const layers = topologicalLayers(nodes, edges);
-		const byLayer = new Map<number, Node<FlowNodeData>[]>();
-		for (const node of nodes) {
-			const layer = layers.get(node.id) || 0;
-			const list = byLayer.get(layer) || [];
-			list.push(node);
-			byLayer.set(layer, list);
-		}
-		const positioned = nodes.map((node) => {
-			const layer = layers.get(node.id) || 0;
-			const peers = byLayer.get(layer) || [];
-			const index = peers.findIndex((peer) => peer.id === node.id);
-			return {
-				...node,
-				position: { x: 80 + layer * 260, y: 80 + index * 130 },
-			};
+		set({
+			nodes: layoutNodesByLayer(nodes, edges),
+			contextMenu: null,
+			viewportFitRequest: bumpViewportFit(get),
 		});
-		set({ nodes: positioned, contextMenu: null });
+	},
+
+	rebuildCanvasPages: () => {
+		const { nodes, edges } = get();
+		if (!nodes.length) {
+			set({
+				canvasPages: [],
+				canvasPageIndex: 0,
+				canvasPaginationEnabled: false,
+			});
+			return;
+		}
+		const pages = splitWorkflowIntoPages(nodes, edges);
+		const multiPage =
+			nodes.length >= PAGINATION_NODE_THRESHOLD && pages.length > 1;
+		set({
+			canvasPages: pages,
+			canvasPageIndex: Math.min(
+				get().canvasPageIndex,
+				Math.max(0, pages.length - 1),
+			),
+			canvasPaginationEnabled: multiPage,
+			viewportFitRequest: bumpViewportFit(get),
+		});
+	},
+
+	setCanvasPage: (index) => {
+		const { canvasPages } = get();
+		if (!canvasPages.length) return;
+		const next = Math.max(0, Math.min(index, canvasPages.length - 1));
+		set({
+			canvasPageIndex: next,
+			canvasPaginationEnabled: true,
+			viewportFitRequest: bumpViewportFit(get),
+		});
+	},
+
+	setCanvasPaginationEnabled: (enabled) => {
+		set({
+			canvasPaginationEnabled: enabled,
+			viewportFitRequest: bumpViewportFit(get),
+		});
+	},
+
+	setAppView: (view) => set({ appView: view }),
+
+	focusNodeOnCanvas: (nodeId) => {
+		const { canvasPages, nodes } = get();
+		if (!nodes.some((node) => node.id === nodeId)) return;
+		const pageIndex = canvasPages.findIndex((page) => page.includes(nodeId));
+		set({
+			appView: "editor",
+			selectedNodeId: nodeId,
+			canvasPaginationEnabled:
+				pageIndex >= 0 ? true : get().canvasPaginationEnabled,
+			canvasPageIndex: pageIndex >= 0 ? pageIndex : get().canvasPageIndex,
+			viewportFitRequest: bumpViewportFit(get),
+			nodePanelOpen: false,
+			inspectorOpen: false,
+		});
+	},
+
+	newWorkflow: () => {
+		set({
+			nodes: [],
+			edges: [],
+			workflowId: null,
+			workflowName: "Nouveau workflow",
+			snapshots: {},
+			lastExecution: null,
+			selectedNodeId: null,
+			inspectorOpen: false,
+			nodePanelOpen: false,
+			error: null,
+			importNotice: null,
+			canvasPages: [],
+			canvasPageIndex: 0,
+			canvasPaginationEnabled: false,
+			appView: "editor",
+		});
 	},
 
 	loadImportedDefinition: (payload) => {
@@ -715,7 +836,33 @@ export const useDagStore = create<DagState>((set, get) => ({
 				payload.warnings?.length > 0
 					? `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) · ${payload.warnings[0]}`
 					: `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) chargés.`,
+			viewportFitRequest: bumpViewportFit(get),
 		});
+		const state = get();
+		const overlap = positionsOverlapRatio(state.nodes);
+		if (state.nodes.length >= PAGINATION_NODE_THRESHOLD || overlap >= 0.25) {
+			get().tidyUpWorkflow();
+			if (state.nodes.length >= 50) {
+				set({
+					edgePathStyle: "smoothstep",
+					edges: normalizeCanvasEdges(get().edges, "smoothstep"),
+				});
+			}
+		}
+		get().rebuildCanvasPages();
+		if (state.nodes.length >= PAGINATION_NODE_THRESHOLD) {
+			set({ appView: "overview" });
+		}
+		if (overlap >= 0.25 || state.nodes.length >= PAGINATION_NODE_THRESHOLD) {
+			const pageCount = get().canvasPages.length;
+			set({
+				importNotice:
+					`${get().importNotice || ""} · Réorganisation automatique (${pageCount} page(s) max. ~26 nœuds)`.replace(
+						/^ · /,
+						"",
+					),
+			});
+		}
 	},
 
 	importFmwFromFile: async (file: File) => {
