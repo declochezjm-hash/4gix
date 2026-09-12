@@ -116,6 +116,41 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 			"Monaco",
 		],
 	},
+	composer_agent: {
+		displayName: "Composer Agent",
+		paletteDescription:
+			"Agent IA : propose des nœuds et remplace ce bloc à l'acceptation",
+		searchTags: ["Composer", "Agent", "AI", "LLM", "Composer Agent"],
+	},
+	direct_agent_processor: {
+		displayName: "AI Direct Processor",
+		paletteDescription:
+			"Traitement spatial direct via code Python généré (sans sous-graphe)",
+		searchTags: [
+			"Direct",
+			"Processor",
+			"AI",
+			"LLM",
+			"GeoPandas",
+			"Cursor",
+			"Intelligence Artificielle",
+		],
+	},
+	auto_architect_agent: {
+		displayName: "Auto-Architect Agent",
+		paletteDescription:
+			"Agent autonome multi-étapes : planifie et génère le pipeline nœud par nœud",
+		searchTags: [
+			"Auto",
+			"Architect",
+			"Agent",
+			"AGENTS",
+			"Advanced AI",
+			"Step",
+			"Multi-étapes",
+			"step-architect",
+		],
+	},
 	clipper: {
 		displayName: "Clip Features",
 		paletteDescription: "Split features inside and outside a clip mask",

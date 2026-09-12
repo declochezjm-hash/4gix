@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ComposerAgentProvider } from "./components/agent/ComposerAgentContext";
+import { ComposerDrawer } from "./components/agent/ComposerDrawer";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
 import { TopBar } from "./components/Header/TopBar";
@@ -14,6 +16,8 @@ export default function App() {
 	const importLocalWorkflowFile = useDagStore((s) => s.importLocalWorkflowFile);
 	const selectedNodeId = useDagStore((s) => s.selectedNodeId);
 	const openInspector = useDagStore((s) => s.openInspector);
+	const composerDrawerOpen = useDagStore((s) => s.composerDrawerOpen);
+	const setComposerDrawerOpen = useDagStore((s) => s.setComposerDrawerOpen);
 	const deleteNode = useDagStore((s) => s.deleteNode);
 	const copyNode = useDagStore((s) => s.copyNode);
 	const pasteNode = useDagStore((s) => s.pasteNode);
@@ -72,6 +76,10 @@ export default function App() {
 			if (event.key === "Enter" && selectedNodeId) {
 				openInspector(selectedNodeId);
 			}
+			if (event.ctrlKey && event.key.toLowerCase() === "i") {
+				event.preventDefault();
+				setComposerDrawerOpen(!composerDrawerOpen);
+			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -85,6 +93,8 @@ export default function App() {
 		renameSelectedNode,
 		tidyUpWorkflow,
 		openInspector,
+		composerDrawerOpen,
+		setComposerDrawerOpen,
 	]);
 
 	return (
@@ -95,36 +105,39 @@ export default function App() {
 				{appView === "overview" ? (
 					<ProjectOverview />
 				) : (
-					<div
-						className={`workspace${fmwDragOver ? " workspace--fmw-drop" : ""}`}
-						onDragOver={(event) => {
-							if (!event.dataTransfer.types.includes("Files")) return;
-							event.preventDefault();
-							event.dataTransfer.dropEffect = "copy";
-							setFmwDragOver(true);
-						}}
-						onDragLeave={(event) => {
-							const next = event.relatedTarget as Element | null;
-							if (next && event.currentTarget.contains(next)) return;
-							setFmwDragOver(false);
-						}}
-						onDrop={(event) => {
-							event.preventDefault();
-							setFmwDragOver(false);
-							handleFmwDrop(event.dataTransfer.files?.[0]);
-						}}
-					>
-						<main className="workspace__main">
-							{fmwDragOver ? (
-								<div className="fmw-drop-overlay" aria-hidden>
-									Déposer un projet (.fmw / .json)
-								</div>
-							) : null}
-							<FlowCanvas />
-							<NodePanelRight />
-							<NodeModal />
-						</main>
-					</div>
+					<ComposerAgentProvider>
+						<div
+							className={`workspace${fmwDragOver ? " workspace--fmw-drop" : ""}`}
+							onDragOver={(event) => {
+								if (!event.dataTransfer.types.includes("Files")) return;
+								event.preventDefault();
+								event.dataTransfer.dropEffect = "copy";
+								setFmwDragOver(true);
+							}}
+							onDragLeave={(event) => {
+								const next = event.relatedTarget as Element | null;
+								if (next && event.currentTarget.contains(next)) return;
+								setFmwDragOver(false);
+							}}
+							onDrop={(event) => {
+								event.preventDefault();
+								setFmwDragOver(false);
+								handleFmwDrop(event.dataTransfer.files?.[0]);
+							}}
+						>
+							<main className="workspace__main">
+								{fmwDragOver ? (
+									<div className="fmw-drop-overlay" aria-hidden>
+										Déposer un projet (.fmw / .json)
+									</div>
+								) : null}
+								<FlowCanvas />
+								<NodePanelRight />
+								<NodeModal />
+								<ComposerDrawer />
+							</main>
+						</div>
+					</ComposerAgentProvider>
 				)}
 			</div>
 		</div>

@@ -32,14 +32,25 @@ import {
 	saveWorkflow,
 	uploadDataFile,
 	type WorkflowRecord,
+	directProcessAgent,
 	wsExecuteUrl,
 	zipLooksLikeShapefile,
 } from "../lib/api";
+import {
+	graphForDirectProcess,
+	parseChatHistory,
+	type DirectChatTurn,
+} from "../lib/directProcess";
 import {
 	buildCanvasEdge,
 	type EdgePathStyle,
 	normalizeCanvasEdges,
 } from "../lib/canvasEdges";
+import {
+	appendMaterializedProposals,
+	applyComposerGraphReplacement,
+	computeComposerRemoveIds,
+} from "../lib/composerCanvas";
 import {
 	layoutNodesByLayer,
 	PAGINATION_NODE_THRESHOLD,
@@ -124,6 +135,7 @@ type DagState = {
 	saveCurrentWorkflow: () => Promise<void>;
 	runDag: () => Promise<void>;
 	runSelectedNode: () => Promise<void>;
+	runDirectProcess: (nodeId: string, prompt: string) => Promise<void>;
 	closeInspector: () => void;
 	openContextMenu: (menu: ContextMenuState) => void;
 	closeContextMenu: () => void;
@@ -153,6 +165,41 @@ type DagState = {
 	) => Promise<void>;
 	exportCurrentFmw: () => Promise<void>;
 	setCanvasLocked: (locked: boolean) => void;
+	applyComposerReplacement: (
+		anchorNodeId: string,
+		proposedNodes: Node<FlowNodeData>[],
+		proposedEdges: Edge[],
+	) => void;
+	appendStepProposals: (
+		proposedNodes: Node<FlowNodeData>[],
+		proposedEdges: Edge[],
+	) => void;
+	stepProposalNodes: Node<FlowNodeData>[];
+	stepProposalEdges: Edge[];
+	isArchitectGenerating: boolean;
+	architectGlobalPlan: string[];
+	architectStepIndex: number;
+	architectTotalSteps: number;
+	architectPreviousSteps: import("../lib/api").StepArchitectPreviousStep[];
+	architectSourceNodeId: string | null;
+	architectGlobalObjective: string;
+	setStepProposals: (
+		proposedNodes: Node<FlowNodeData>[],
+		proposedEdges: Edge[],
+	) => void;
+	discardProposals: () => void;
+	setArchitectGenerating: (value: boolean) => void;
+	setArchitectSession: (patch: {
+		globalPlan?: string[];
+		stepIndex?: number;
+		totalSteps?: number;
+		previousSteps?: import("../lib/api").StepArchitectPreviousStep[];
+		sourceNodeId?: string | null;
+		globalObjective?: string;
+	}) => void;
+	applyComposerProposals: () => void;
+	composerDrawerOpen: boolean;
+	setComposerDrawerOpen: (open: boolean) => void;
 };
 
 function schemaDefaults(entry: CatalogNode): Record<string, unknown> {
@@ -282,11 +329,17 @@ function ancestorsOf(nodeId: string, edges: Edge[]): Set<string> {
 	return seen;
 }
 
+function reactFlowTypeForNode(nodeType: string): string {
+	return nodeType === "direct_agent_processor"
+		? "direct_agent_processor"
+		: "etl";
+}
+
 function buildNode(entry: CatalogNode, position: { x: number; y: number }) {
 	const id = `${entry.node_type}-${nodeSeq++}`;
 	const node: Node<FlowNodeData> = {
 		id,
-		type: "etl",
+		type: reactFlowTypeForNode(entry.node_type),
 		position,
 		data: {
 			label: entry.label,
@@ -336,6 +389,16 @@ export const useDagStore = create<DagState>((set, get) => ({
 	canvasPaginationEnabled: false,
 	appView: "editor",
 	mapView: null,
+	composerDrawerOpen: false,
+	stepProposalNodes: [],
+	stepProposalEdges: [],
+	isArchitectGenerating: false,
+	architectGlobalPlan: [],
+	architectStepIndex: 0,
+	architectTotalSteps: 0,
+	architectPreviousSteps: [],
+	architectSourceNodeId: null,
+	architectGlobalObjective: "",
 
 	onNodesChange: (changes) =>
 		set({ nodes: applyNodeChanges(changes, get().nodes) }),
@@ -561,6 +624,88 @@ export const useDagStore = create<DagState>((set, get) => ({
 	setWorkflowName: (name) => set({ workflowName: name }),
 	closeInspector: () => set({ inspectorOpen: false }),
 
+	runDirectProcess: async (nodeId, prompt) => {
+		const { nodes, edges, snapshots, lastExecution } = get();
+		const node = nodes.find((n) => n.id === nodeId);
+		if (!node) return;
+		const trimmed = prompt.trim();
+		if (!trimmed) return;
+
+		set({
+			nodes: applyStatus(nodes, nodeId, "RUNNING", { error: null }),
+			error: null,
+		});
+
+		const prevHistory = parseChatHistory(node.data.params?.chat_history);
+
+		try {
+			const result = await directProcessAgent({
+				node_id: nodeId,
+				prompt: trimmed,
+				sample_limit: 500,
+				current_graph: graphForDirectProcess(nodes, edges, snapshots),
+				execution_id: lastExecution?.execution_id ?? undefined,
+			});
+			const snapshot = result.snapshot;
+			const turn: DirectChatTurn = {
+				prompt: trimmed,
+				executedAt: new Date().toISOString(),
+				ok: true,
+				featureCountAfter: result.feature_count_after,
+			};
+			set((state) => ({
+				snapshots: { ...state.snapshots, [nodeId]: snapshot },
+				nodes: state.nodes.map((n) =>
+					n.id === nodeId
+						? {
+								...n,
+								data: {
+									...n.data,
+									status: "COMPLETED",
+									durationMs: snapshot.duration_ms,
+									error: null,
+									params: {
+										...n.data.params,
+										prompt: trimmed,
+										chat_history: [...prevHistory, turn],
+										last_code: result.code ?? "",
+									},
+								},
+							}
+						: n,
+				),
+			}));
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Erreur inconnue";
+			const turn: DirectChatTurn = {
+				prompt: trimmed,
+				executedAt: new Date().toISOString(),
+				ok: false,
+				error: message,
+			};
+			set((state) => ({
+				error: message,
+				nodes: state.nodes.map((n) =>
+					n.id === nodeId
+						? {
+								...n,
+								data: {
+									...n.data,
+									status: "FAILED",
+									error: message,
+									params: {
+										...n.data.params,
+										prompt: trimmed,
+										chat_history: [...prevHistory, turn],
+									},
+								},
+							}
+						: n,
+				),
+			}));
+		}
+	},
+
 	loadCatalog: async () => {
 		try {
 			const payload = await fetchCatalog();
@@ -600,7 +745,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 		const nodes = ((definition.nodes || []) as Node<FlowNodeData>[]).map(
 			(node) => ({
 				...node,
-				type: "etl",
+				type: reactFlowTypeForNode(node.data?.nodeType || "etl"),
 				data: {
 					...node.data,
 					status: "idle" as const,
@@ -1063,10 +1208,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 				geotiff: "GeoTIFF",
 			};
 			const kind = typeLabels[payload.detected_type] || payload.detected_type;
-			const shpSoloHint =
-				file.name.toLowerCase().endsWith(".shp")
-					? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
-					: "";
+			const shpSoloHint = file.name.toLowerCase().endsWith(".shp")
+				? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
+				: "";
 			set({
 				nodes: [...get().nodes, node],
 				selectedNodeId: node.id,
@@ -1115,6 +1259,99 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	setCanvasLocked: (locked) => set({ canvasLocked: locked }),
+
+	setComposerDrawerOpen: (open) => set({ composerDrawerOpen: open }),
+
+	appendStepProposals: (proposedNodes, proposedEdges) => {
+		const state = get();
+		const { nodes, edges } = appendMaterializedProposals(
+			state.nodes,
+			state.edges,
+			state.edgePathStyle,
+			proposedNodes,
+			proposedEdges,
+		);
+		set({ nodes, edges });
+	},
+
+	setStepProposals: (proposedNodes, proposedEdges) => {
+		set({
+			stepProposalNodes: proposedNodes,
+			stepProposalEdges: proposedEdges,
+		});
+	},
+
+	discardProposals: () => {
+		set({ stepProposalNodes: [], stepProposalEdges: [] });
+	},
+
+	setArchitectGenerating: (value) => set({ isArchitectGenerating: value }),
+
+	setArchitectSession: (patch) =>
+		set((state) => ({
+			architectGlobalPlan: patch.globalPlan ?? state.architectGlobalPlan,
+			architectStepIndex: patch.stepIndex ?? state.architectStepIndex,
+			architectTotalSteps: patch.totalSteps ?? state.architectTotalSteps,
+			architectPreviousSteps:
+				patch.previousSteps ?? state.architectPreviousSteps,
+			architectSourceNodeId:
+				patch.sourceNodeId !== undefined
+					? patch.sourceNodeId
+					: state.architectSourceNodeId,
+			architectGlobalObjective:
+				patch.globalObjective ?? state.architectGlobalObjective,
+		})),
+
+	applyComposerProposals: () => {
+		const state = get();
+		if (!state.stepProposalNodes.length) return;
+		const { nodes, edges } = appendMaterializedProposals(
+			state.nodes,
+			state.edges,
+			state.edgePathStyle,
+			state.stepProposalNodes,
+			state.stepProposalEdges,
+		);
+		set({
+			nodes,
+			edges,
+			stepProposalNodes: [],
+			stepProposalEdges: [],
+			inspectorOpen: false,
+			importNotice: "Pipeline consolidé sur le canvas.",
+			error: null,
+		});
+	},
+
+	applyComposerReplacement: (anchorNodeId, proposedNodes, proposedEdges) => {
+		const state = get();
+		const anchor = state.nodes.find((node) => node.id === anchorNodeId);
+		const replaceDownstream = anchor?.data.params?.replace_downstream !== false;
+		const removeIds = computeComposerRemoveIds(
+			anchorNodeId,
+			Boolean(replaceDownstream),
+			state.nodes,
+			state.edges,
+		);
+		const { nodes, edges } = applyComposerGraphReplacement(
+			state.nodes,
+			state.edges,
+			state.edgePathStyle,
+			anchorNodeId,
+			removeIds,
+			proposedNodes,
+			proposedEdges,
+		);
+		set({
+			nodes,
+			edges,
+			inspectorOpen: false,
+			selectedNodeId:
+				state.selectedNodeId && removeIds.includes(state.selectedNodeId)
+					? null
+					: state.selectedNodeId,
+		});
+	},
 }));
 
 async function executeViaSocket(

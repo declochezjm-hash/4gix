@@ -77,6 +77,7 @@ export function asFeatureCollection(
 export function tableRowsFromData(value: unknown): {
 	columns: string[];
 	rows: Record<string, unknown>[];
+	total: number;
 } {
 	const fc = asFeatureCollection(value);
 	if (fc) {
@@ -89,7 +90,9 @@ export function tableRowsFromData(value: unknown): {
 			}
 			return props;
 		});
-		return { columns, rows };
+		const total =
+			typeof fc.total === "number" ? fc.total : fc.features.length;
+		return { columns, rows, total };
 	}
 	if (value && typeof value === "object") {
 		const record = value as Record<string, unknown>;
@@ -101,10 +104,12 @@ export function tableRowsFromData(value: unknown): {
 					if (!columns.includes(key)) columns.push(key);
 				}
 			}
-			return { columns, rows };
+			const total =
+				typeof record.total === "number" ? record.total : rows.length;
+			return { columns, rows, total };
 		}
 	}
-	return { columns: [], rows: [] };
+	return { columns: [], rows: [], total: 0 };
 }
 
 export type RasterPreview = {

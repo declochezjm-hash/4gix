@@ -4,8 +4,10 @@ import {
 	type Connection,
 	ConnectionLineType,
 	type Edge,
+	type EdgeChange,
 	type EdgeTypes,
 	type FinalConnectionState,
+	type NodeChange,
 	type NodeTypes,
 	ReactFlow,
 	ReactFlowProvider,
@@ -21,21 +23,26 @@ import {
 import { canvasDotsColor, readColorTheme } from "../../lib/theme";
 import "@xyflow/react/dist/style.css";
 
-import type { CatalogNode } from "../../lib/api";
+import type { CatalogNode, FlowNodeData } from "../../lib/api";
 import {
 	fileLooksLikeGeoJSON,
 	isDataImportFilename,
 	isFmwFilename,
 } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { useComposerAgentContext } from "../agent/ComposerAgentContext";
 import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
 import { EdgeContextMenu } from "./EdgeContextMenu";
+import { DirectAgentNode } from "../nodes/DirectAgentNode";
 import { EtlNode } from "./EtlNode";
 import { N8nEdge } from "./N8nEdge";
 import { NodeContextMenu } from "./NodeContextMenu";
 
-const nodeTypes = { etl: EtlNode } as NodeTypes;
+const nodeTypes = {
+	etl: EtlNode,
+	direct_agent_processor: DirectAgentNode,
+} as NodeTypes;
 const edgeTypes = { n8nEdge: N8nEdge } as EdgeTypes;
 
 const FIT_VIEW_OPTIONS = {
@@ -83,6 +90,17 @@ function CanvasViewportSync() {
 function FlowCanvasInner() {
 	const nodes = useDagStore((s) => s.nodes);
 	const edges = useDagStore((s) => s.edges);
+	const { proposedNodes, proposedEdges } = useComposerAgentContext();
+	const stepProposalNodes = useDagStore((s) => s.stepProposalNodes);
+	const stepProposalEdges = useDagStore((s) => s.stepProposalEdges);
+	const mergedProposalNodes = useMemo(
+		() => [...stepProposalNodes, ...proposedNodes],
+		[stepProposalNodes, proposedNodes],
+	);
+	const mergedProposalEdges = useMemo(
+		() => [...stepProposalEdges, ...proposedEdges],
+		[stepProposalEdges, proposedEdges],
+	);
 	const canvasLocked = useDagStore((s) => s.canvasLocked);
 	const onNodesChange = useDagStore((s) => s.onNodesChange);
 	const onEdgesChange = useDagStore((s) => s.onEdgesChange);
@@ -108,39 +126,100 @@ function FlowCanvasInner() {
 		return new Set(canvasPages[canvasPageIndex] ?? []);
 	}, [canvasPaginationEnabled, canvasPages, canvasPageIndex]);
 
-	const displayNodes = useMemo(
-		() =>
-			nodes.map((node) => ({
-				...node,
-				hidden: visibleIdSet ? !visibleIdSet.has(node.id) : false,
-			})),
-		[nodes, visibleIdSet],
+	const displayNodes = useMemo(() => {
+		const base = nodes.map((node) => ({
+			...node,
+			hidden: visibleIdSet ? !visibleIdSet.has(node.id) : false,
+		}));
+		const ghosts = mergedProposalNodes.map((node) => ({
+			...node,
+			draggable: false,
+			selectable: false,
+			hidden: false,
+		}));
+		return [...base, ...ghosts];
+	}, [nodes, mergedProposalNodes, visibleIdSet]);
+
+	const realNodeIds = useMemo(
+		() => new Set(nodes.map((node) => node.id)),
+		[nodes],
+	);
+	const realEdgeIds = useMemo(
+		() => new Set(edges.map((edge) => edge.id)),
+		[edges],
+	);
+
+	const onDisplayNodesChange = useCallback(
+		(changes: NodeChange[]) => {
+			onNodesChange(
+				changes.filter((change) => {
+					if ("id" in change && change.id) return realNodeIds.has(change.id);
+					return true;
+				}) as NodeChange<import("@xyflow/react").Node<FlowNodeData>>[],
+			);
+		},
+		[onNodesChange, realNodeIds],
+	);
+
+	const onDisplayEdgesChange = useCallback(
+		(changes: EdgeChange[]) => {
+			onEdgesChange(
+				changes.filter((change) => {
+					if ("id" in change && change.id) return realEdgeIds.has(change.id);
+					return true;
+				}),
+			);
+		},
+		[onEdgesChange, realEdgeIds],
 	);
 
 	const lastExecution = useDagStore((s) => s.lastExecution);
-	const displayEdges = useMemo(
-		() =>
-			edges.map((edge) => {
-				const hidden =
-					visibleIdSet &&
-					(!visibleIdSet.has(edge.source) || !visibleIdSet.has(edge.target));
-				const running =
-					lastExecution?.status === "RUNNING" ||
-					lastExecution?.status === "running";
-				return {
-					...edge,
-					type: "n8nEdge",
-					hidden: Boolean(hidden),
-					interactionWidth: 28,
-					data: {
-						...(edge.data || {}),
-						pathStyle: edgePathStyle,
-						active: running,
-					},
-				};
-			}),
-		[edges, visibleIdSet, edgePathStyle, lastExecution?.status],
-	);
+	const displayEdges = useMemo(() => {
+		const base = edges.map((edge) => {
+			const hidden =
+				visibleIdSet &&
+				(!visibleIdSet.has(edge.source) || !visibleIdSet.has(edge.target));
+			const running =
+				lastExecution?.status === "RUNNING" ||
+				lastExecution?.status === "running";
+			return {
+				...edge,
+				type: "n8nEdge",
+				hidden: Boolean(hidden),
+				interactionWidth: 28,
+				data: {
+					...(edge.data || {}),
+					pathStyle: edgePathStyle,
+					active: running,
+				},
+			};
+		});
+		const ghosts = mergedProposalEdges.map((edge) => ({
+			...edge,
+			type: "n8nEdge",
+			hidden: false,
+			interactionWidth: 28,
+			animated: true,
+			data: {
+				...(edge.data || {}),
+				pathStyle: edgePathStyle,
+				isGhost: true,
+			},
+			style: {
+				stroke: "#a855f7",
+				strokeWidth: 2.5,
+				strokeDasharray: "5,5",
+				...edge.style,
+			},
+		}));
+		return [...base, ...ghosts];
+	}, [
+		edges,
+		mergedProposalEdges,
+		visibleIdSet,
+		edgePathStyle,
+		lastExecution?.status,
+	]);
 
 	const [edgeMenu, setEdgeMenu] = useState<{
 		edgeId: string;
@@ -276,8 +355,8 @@ function FlowCanvasInner() {
 			<ReactFlow
 				nodes={displayNodes}
 				edges={displayEdges}
-				onNodesChange={onNodesChange}
-				onEdgesChange={onEdgesChange}
+				onNodesChange={onDisplayNodesChange}
+				onEdgesChange={onDisplayEdgesChange}
 				onConnect={onConnect}
 				isValidConnection={isValidConnection}
 				onReconnect={onReconnect}

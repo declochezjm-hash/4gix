@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import geopandas as gpd
@@ -12,12 +13,20 @@ from app.core.readers.shapefile import MAP_CRS, shapefile_read_outputs
 
 COORD_PAIR_KEYS: List[Tuple[str, str]] = [
     ("longitude", "latitude"),
-    ("lon", "lat"),
     ("long", "lat"),
+    ("lon", "lat"),
     ("x", "y"),
+    ("coord_x", "coord_y"),
+    ("coordx", "coordy"),
     ("easting", "northing"),
     ("est", "nord"),
+    ("x_lambert", "y_lambert"),
+    ("lambert_x", "lambert_y"),
 ]
+
+
+def _normalize_col_key(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
 
 
 def find_xy_columns(columns: List[str]) -> Optional[Tuple[str, str]]:
@@ -25,6 +34,25 @@ def find_xy_columns(columns: List[str]) -> Optional[Tuple[str, str]]:
     for x_key, y_key in COORD_PAIR_KEYS:
         if x_key in lowered and y_key in lowered:
             return lowered[x_key], lowered[y_key]
+
+    norm_map = {_normalize_col_key(col): str(col) for col in columns if str(col).strip()}
+    for x_key, y_key in COORD_PAIR_KEYS:
+        nx, ny = _normalize_col_key(x_key), _normalize_col_key(y_key)
+        if nx in norm_map and ny in norm_map:
+            return norm_map[nx], norm_map[ny]
+
+    lon_keys = ("longitude", "long", "lon", "x", "coordx", "easting", "est")
+    lat_keys = ("latitude", "lat", "y", "coordy", "northing", "nord")
+    lon_col = next(
+        (norm_map[k] for k in norm_map if any(token in k for token in lon_keys)),
+        None,
+    )
+    lat_col = next(
+        (norm_map[k] for k in norm_map if any(token in k for token in lat_keys)),
+        None,
+    )
+    if lon_col and lat_col and lon_col != lat_col:
+        return lon_col, lat_col
     return None
 
 
