@@ -101,6 +101,7 @@ export function ComposerDrawer() {
 		isThinking,
 		sendPrompt,
 		targetedPrompt,
+		sourceNodeId,
 	]);
 
 	const stopArchitect = useCallback(() => {
@@ -334,7 +335,9 @@ export function ComposerDrawer() {
 								))}
 							</div>
 						) : null}
-						{error ? <p className="composer-agent-panel__error">{error}</p> : null}
+						{error ? (
+							<p className="composer-agent-panel__error">{error}</p>
+						) : null}
 						{hasProposals ? (
 							<div className="composer-agent-panel__review">
 								<p>

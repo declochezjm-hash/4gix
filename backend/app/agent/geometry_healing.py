@@ -12,9 +12,11 @@ _SPATIAL_WRITERS = frozenset(
 )
 
 _GEOMETRY_ERROR_RE = re.compile(
-    r"geometry|géométrie|geodataframe|crs|coordonn",
+    r"geometry|géométrie|geodataframe|crs|coordonn|without a geometry column",
     re.IGNORECASE,
 )
+
+GEOMETRY_HEAL_NODE_TYPE = "vertex_creator"
 
 
 def is_spatial_writer(node_type: str) -> bool:
@@ -45,19 +47,42 @@ def coordinate_pair(inspect: Dict[str, Any]) -> Optional[Tuple[str, str]]:
     cols = params.get("coordinate_columns")
     if isinstance(cols, list) and len(cols) >= 2:
         return str(cols[0]), str(cols[1])
+    explicit = inspect.get("coordinate_columns")
+    if isinstance(explicit, list) and len(explicit) >= 2:
+        return str(explicit[0]), str(explicit[1])
     return None
 
 
 def inspect_has_geometry(inspect: Dict[str, Any]) -> bool:
-    if inspect.get("has_geometry") is True:
-        return True
     geom_types = inspect.get("geometry_types")
     if isinstance(geom_types, list) and geom_types:
         return True
     geom = inspect.get("geometry")
     if geom and str(geom).strip().lower() not in {"none", "—", "-", ""}:
+        if str(geom).lower() not in {"geometry"}:
+            return True
+    if inspect.get("has_geometry") is True and inspect.get("geometry_types"):
         return True
+    for name in field_names(inspect):
+        if name.lower() in {"geometry", "geom", "the_geom"}:
+            return True
     return False
+
+
+def inspect_needs_geometry_heal(inspect: Dict[str, Any]) -> bool:
+    """True si export spatial requiert un Vertex Creator (tabulaire + colonnes XY)."""
+    if inspect_has_geometry(inspect):
+        return False
+    return coordinate_pair(inspect) is not None
+
+
+def preferred_target_crs(inspect: Dict[str, Any]) -> str:
+    crs = str(inspect.get("crs") or "").strip().upper()
+    if crs.startswith("EPSG:2154") or "2154" in crs:
+        return "EPSG:2154"
+    if crs.startswith("EPSG:"):
+        return crs if crs.startswith("EPSG:") else f"EPSG:{crs.replace('EPSG:', '')}"
+    return "EPSG:4326"
 
 
 def enrich_inspect_geometry_flags(inspect: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,6 +92,7 @@ def enrich_inspect_geometry_flags(inspect: Dict[str, Any]) -> Dict[str, Any]:
     if pair:
         out["coordinate_columns"] = [pair[0], pair[1]]
     out["has_geometry"] = inspect_has_geometry(out)
+    out["needs_geometry_heal"] = inspect_needs_geometry_heal(out)
     return out
 
 
@@ -89,6 +115,38 @@ def geometry_builder_python_code(x_col: str, y_col: str) -> str:
     )
 
 
+def geometry_heal_step_config(inspect: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Config d'un nœud vertex_creator (ou python_caller en secours)."""
+    if not inspect_needs_geometry_heal(inspect):
+        return None
+    pair = coordinate_pair(inspect)
+    if not pair:
+        return None
+    x_col, y_col = pair
+    target_crs = preferred_target_crs(inspect)
+    return {
+        "x_field": x_col,
+        "y_field": y_col,
+        "target_crs": target_crs,
+    }
+
+
+def geometry_heal_node_type(inspect: Dict[str, Any]) -> Optional[str]:
+    if geometry_heal_step_config(inspect):
+        return GEOMETRY_HEAL_NODE_TYPE
+    return None
+
+
+def proactive_heal_chat_message(error_message: str) -> str:
+    lower = (error_message or "").lower()
+    if "without a geometry column" in lower:
+        return (
+            "Échec d'export Shapefile : les données d'entrée sont tabulaires (CSV) "
+            "sans colonne géométrique. Injection du nœud de création de géométrie XY…"
+        )
+    return explain_geometry_error(error_message)
+
+
 def resolve_spatial_export_writer(
     writer_type: str,
     inspect: Dict[str, Any],
@@ -104,26 +162,22 @@ def resolve_spatial_export_writer(
         return writer_type, {}, messages
     pair = coordinate_pair(inspect)
     if pair:
-        return writer_type, {"_geometry_heal": {"x": pair[0], "y": pair[1]}}, messages
+        return (
+            writer_type,
+            {
+                "_geometry_heal": {
+                    "x": pair[0],
+                    "y": pair[1],
+                    "target_crs": preferred_target_crs(inspect),
+                }
+            },
+            messages,
+        )
     messages.append(
         "Données sans géométrie ni colonnes X/Y détectées — export basculé en CSV "
         "(au lieu de Shapefile/GeoJSON)."
     )
     return "csv_writer", {}, messages
-
-
-def geometry_heal_step_config(inspect: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Config d'un nœud python_caller pour reconstruire la géométrie, ou None."""
-    if inspect_has_geometry(inspect):
-        return None
-    pair = coordinate_pair(inspect)
-    if not pair:
-        return None
-    x_col, y_col = pair
-    return {
-        "language": "python",
-        "code": geometry_builder_python_code(x_col, y_col),
-    }
 
 
 def build_proactive_suggestions(

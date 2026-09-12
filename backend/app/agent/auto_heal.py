@@ -5,14 +5,17 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.agent.geometry_healing import (
+    GEOMETRY_HEAL_NODE_TYPE,
+    build_proactive_suggestions,
     coordinate_pair,
     enrich_inspect_geometry_flags,
     explain_geometry_error,
-    geometry_builder_python_code,
     geometry_heal_step_config,
     inspect_has_geometry,
+    inspect_needs_geometry_heal,
     is_geometry_related_error,
     is_spatial_writer,
+    proactive_heal_chat_message,
     resolve_spatial_export_writer,
 )
 from app.agent.tools import (
@@ -60,15 +63,21 @@ def plan_execution_heal(
         return {"ok": False, "error": "Impossible de déterminer le nœud amont."}
 
     inspect = enrich_inspect_geometry_flags(inspect_input_schema(parent_id, graph))
+    if not coordinate_pair(inspect) and source_node_id and source_node_id != parent_id:
+        inspect = enrich_inspect_geometry_flags(
+            inspect_input_schema(source_node_id, graph)
+        )
+
     explanation = explain_geometry_error(error_message)
+    chat_message = proactive_heal_chat_message(error_message)
     corrective_steps: List[Dict[str, Any]] = []
 
     heal_cfg = geometry_heal_step_config(inspect)
-    if heal_cfg and not inspect_has_geometry(inspect):
+    if heal_cfg and (inspect_needs_geometry_heal(inspect) or not inspect_has_geometry(inspect)):
         corrective_steps.append(
             {
-                "node_type": "python_caller",
-                "summary": "Création de géométrie (colonnes X/Y ou lat/lon)",
+                "node_type": GEOMETRY_HEAL_NODE_TYPE,
+                "summary": "Vertex Creator — géométrie XY",
                 "config": heal_cfg,
                 "insert_before_node_id": failed_node_id,
                 "connect_from_node_id": parent_id,
@@ -86,26 +95,11 @@ def plan_execution_heal(
                 }
             )
 
-    pair = coordinate_pair(inspect)
-    if pair and not corrective_steps:
-        x_col, y_col = pair
-        corrective_steps.append(
-            {
-                "node_type": "python_caller",
-                "summary": "Création de géométrie à partir des coordonnées",
-                "config": {
-                    "language": "python",
-                    "code": geometry_builder_python_code(x_col, y_col),
-                },
-                "insert_before_node_id": failed_node_id,
-                "connect_from_node_id": parent_id,
-            }
-        )
-
     if not corrective_steps:
         return {
             "ok": False,
             "explanation": explanation,
+            "chat_message": chat_message,
             "error": "Aucun correctif automatique applicable.",
             "inspect": inspect,
         }
@@ -138,9 +132,21 @@ def plan_execution_heal(
             graph,
         )
 
+    follow_up_actions = [
+        "Appliquer le correctif proposé (Vertex Creator entre filtre et exporteur).",
+        "Basculer l'export en `.csv` si les données restent sans géométrie.",
+        "Voulez-vous reprojeter en EPSG:2154 après création des points ?",
+    ]
+    proactive = build_proactive_suggestions(
+        global_objective,
+        inspect,
+        ["geometry_heal"],
+    )
+
     return {
         "ok": True,
         "explanation": explanation,
+        "chat_message": chat_message,
         "global_objective": global_objective,
         "failed_node_id": failed_node_id,
         "corrective_steps": corrective_steps,
@@ -154,7 +160,10 @@ def plan_execution_heal(
         if proposed_node
         else None,
         "auto_apply_hint": (
-            "Insérez le nœud de géométrie entre le filtre et l'exporteur, "
+            "Insérez le Vertex Creator entre le filtre et l'exporteur Shapefile, "
             "ou basculez l'export en CSV."
         ),
+        "follow_up_actions": follow_up_actions[:3],
+        "proactive_suggestions": proactive[:3],
+        "auto_retry_recommended": bool(proposed_node),
     }

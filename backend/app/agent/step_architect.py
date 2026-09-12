@@ -17,6 +17,7 @@ from app.agent.composer import (
 from app.agent.geometry_healing import (
     build_proactive_suggestions,
     enrich_inspect_geometry_flags,
+    geometry_heal_node_type,
     geometry_heal_step_config,
     is_spatial_writer,
     resolve_spatial_export_writer,
@@ -41,6 +42,11 @@ Règles impératives :
 - Si l'objectif contient plusieurs verbes/actions distincts
   (lire/analyser + reprojeter/filtrer + exporter/sauvegarder/générer),
   tu DOIS créer une séquence de 2 à 3 étapes distinctes.
+- Critères indépendants depuis une même source : branches parallèles distinctes
+  (attach_to_source), décalage vertical Y = 150 px par branche.
+- Nombre minimal de nœuds = N filtres + M writers ; ne fusionne pas les opérations.
+- Avant tout export spatial (.shp, .geojson, .gpkg) depuis données tabulaires,
+  insère une étape geometry_heal (python_caller XY) ou repli CSV explicite.
 - Ne fusionne jamais et n'ignore jamais les étapes d'inspection ni d'export
   (shapefile_writer / vector_writer).
 - is_complete vaut False tant qu'il reste des actions de l'objectif à réaliser.
@@ -142,12 +148,13 @@ def _expand_geometry_heal_steps(
         )
         notices.extend(msgs)
         heal_cfg = geometry_heal_step_config(enriched)
+        heal_type = geometry_heal_node_type(enriched) or "vertex_creator"
         if heal_cfg and is_spatial_writer(resolved_type):
             expanded.append(
                 StepDefinition(
                     kind="geometry_heal",
-                    summary="Création de géométrie (colonnes X/Y ou lat/lon)",
-                    node_type="python_caller",
+                    summary="Vertex Creator — colonnes X/Y ou lat/lon",
+                    node_type=heal_type,
                     config=heal_cfg,
                     attach_to_source=step.attach_to_source,
                     branch_index=step.branch_index,

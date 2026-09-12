@@ -197,6 +197,29 @@ def test_parallel_dag_filter_export_branches() -> None:
     assert done["total_steps"] == 4
 
 
+def test_tabular_xy_inserts_vertex_creator_before_shp() -> None:
+    steps, notices = build_step_plan(
+        "exporte en shapefile",
+        {
+            "fields": [
+                {"name": "TYPE_SOURCE"},
+                {"name": "X"},
+                {"name": "Y"},
+            ],
+            "crs": "EPSG:4326",
+            "has_geometry": False,
+            "geometry_types": [],
+        },
+    )
+    assert [step.node_type for step in steps] == [
+        "vertex_creator",
+        "shapefile_writer",
+    ]
+    assert steps[0].config.get("x_field") == "X"
+    assert steps[0].config.get("y_field") == "Y"
+    assert not notices
+
+
 def test_cc43_shp_intent_mapping() -> None:
     assert parse_target_crs(CSV_CC43_OBJECTIVE) == "EPSG:3943"
     assert _wants_reproject(CSV_CC43_OBJECTIVE) is True

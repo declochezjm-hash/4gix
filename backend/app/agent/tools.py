@@ -274,9 +274,18 @@ def inspect_input_schema(
     geojson = _as_feature_collection(preview)
     if not geojson.get("features"):
         geojson = _as_feature_collection(data)
-    if not geojson.get("features"):
+    reader_like = ntype.endswith("_reader") or ntype in {"file_reader", "csv_reader"}
+    if not geojson.get("features") and reader_like:
         for other in graph_nodes(graph):
+            if str(other.get("id")) == str(node_id):
+                continue
             other_data = other.get("data") if isinstance(other.get("data"), dict) else {}
+            other_type = node_type_of(other)
+            if not (
+                other_type.endswith("_reader")
+                or str(other.get("id")) == str(node_id)
+            ):
+                continue
             candidate = _as_feature_collection(
                 other_data.get("inputSnapshot")
                 or other_data.get("outputSnapshot")
@@ -301,6 +310,20 @@ def inspect_input_schema(
             geom = feat.get("geometry")
             if isinstance(geom, dict) and geom.get("type"):
                 geom_types.append(str(geom["type"]))
+
+    if not fields:
+        meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        meta_cols = meta.get("columns")
+        if isinstance(meta_cols, list):
+            for name in meta_cols:
+                if str(name).strip():
+                    fields.append({"name": str(name), "type": "string"})
+        records_preview = preview.get("records") if isinstance(preview, dict) else None
+        if isinstance(records_preview, list) and records_preview:
+            first_row = records_preview[0]
+            if isinstance(first_row, dict):
+                for name, value in first_row.items():
+                    fields.append({"name": str(name), "type": _infer_field_type(value)})
 
     schema = data.get("schema") if isinstance(data.get("schema"), dict) else {}
     crs = _crs_from_payload(geojson) or _crs_from_payload(preview) or data.get("crs")

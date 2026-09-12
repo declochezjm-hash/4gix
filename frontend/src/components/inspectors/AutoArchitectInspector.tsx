@@ -278,7 +278,9 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				setPendingHeal(heal);
 				appendChat({
 					role: "assistant",
-					content: `${heal.explanation || "Erreur détectée."}\n\nCorrectif proposé : insertion d'un nœud de création de géométrie ou bascule CSV.`,
+					content:
+						(typeof heal.chat_message === "string" && heal.chat_message) ||
+						`${heal.explanation || "Erreur détectée."}\n\nCorrectif proposé : Vertex Creator (XY) ou bascule CSV.`,
 					at: new Date().toISOString(),
 				});
 				pushThinking(

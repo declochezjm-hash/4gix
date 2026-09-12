@@ -53,16 +53,26 @@ class FileWriter(Base4GIxNode):
         path.parent.mkdir(parents=True, exist_ok=True)
         driver = params.get("driver") or "GeoJSON"
 
-        gdf = gpd.GeoDataFrame.from_features(fc.get("features") or [], crs="EPSG:4326")
+        features = fc.get("features") or []
+        gdf = gpd.GeoDataFrame.from_features(features)
         if (
-            hasattr(gdf, "geometry")
-            and (gdf.geometry.isna().all() or "geometry" not in gdf.columns)
-            and len(gdf) > 0
+            len(gdf) > 0
+            and (
+                "geometry" not in gdf.columns
+                or gdf.geometry.isna().all()
+            )
         ):
+            prop_rows = [
+                dict(f.get("properties") or {})
+                for f in features
+                if isinstance(f, dict)
+            ]
             pair = find_xy_columns([str(c) for c in gdf.columns])
+            if not pair and prop_rows:
+                pair = find_xy_columns([str(k) for k in prop_rows[0].keys()])
             if pair:
                 x_col, y_col = pair
-                work = gdf.copy()
+                work = pd.DataFrame(prop_rows) if prop_rows else gdf.copy()
                 work[x_col] = pd.to_numeric(work[x_col], errors="coerce")
                 work[y_col] = pd.to_numeric(work[y_col], errors="coerce")
                 work = work.dropna(subset=[x_col, y_col])
@@ -72,11 +82,11 @@ class FileWriter(Base4GIxNode):
                 attrs = work.drop(columns=[x_col, y_col], errors="ignore")
                 gdf = gpd.GeoDataFrame(attrs, geometry=geometry, crs="EPSG:4326")
 
-        spatial_driver = driver not in {"CSV", None}
+        spatial_driver = str(driver or "").upper() not in {"CSV", ""}
         no_geom = (
             not hasattr(gdf, "geometry")
-            or gdf.geometry.isna().all()
             or "geometry" not in gdf.columns
+            or gdf.geometry.isna().all()
         )
         if spatial_driver and no_geom:
             driver = "CSV"
@@ -86,6 +96,8 @@ class FileWriter(Base4GIxNode):
             df = gdf.drop(columns=["geometry"], errors="ignore")
             df.to_csv(path, index=False)
         else:
+            if gdf.crs is None:
+                gdf = gdf.set_crs(fc.get("crs") or "EPSG:4326")
             gdf.to_file(path, driver=driver)
 
         return {

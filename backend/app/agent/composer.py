@@ -7,6 +7,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.agent.geometry_healing import (
+    build_proactive_suggestions,
+    enrich_inspect_geometry_flags,
+    geometry_heal_step_config,
+    is_spatial_writer,
+    resolve_spatial_export_writer,
+)
 from app.agent.tools import (
     execute_tool,
     graph_edges,
@@ -14,6 +21,9 @@ from app.agent.tools import (
     node_type_of,
     tool_call_summary,
 )
+
+COMPOSER_STEP_OFFSET_X = 280.0
+COMPOSER_BRANCH_OFFSET_Y = 150.0
 
 _FILTER_RE = re.compile(
     r"(?:filtre(?:r)?|filter)(?:\s+la)?(?:\s+colonne|\s+column)?\s*['\"]?(?P<field>[A-Za-z_][\w]*)['\"]?"
@@ -769,6 +779,206 @@ def _python_filter_code(field: str, operator: str, value: str) -> str:
     )
 
 
+@dataclass
+class _ComposerChainStep:
+    node_type: str
+    config: Dict[str, Any]
+    summary: Optional[str] = None
+
+
+def _branch_y(origin: Dict[str, float], branch_index: int) -> float:
+    return origin["y"] + COMPOSER_BRANCH_OFFSET_Y * max(0, branch_index)
+
+
+def _filter_node_config(filter_spec: Dict[str, str]) -> Dict[str, Any]:
+    operator = filter_spec.get("operator") or "contains"
+    if str(operator).upper() == "CONTAINS":
+        operator = "contains"
+    elif operator == "gte":
+        operator = "gt"
+    return {
+        "field": filter_spec["field"],
+        "operator": operator,
+        "value": filter_spec["value"],
+    }
+
+
+def _composer_append_tool_call(
+    events: List[Dict[str, Any]],
+    name: str,
+    summary: str,
+    arguments: Dict[str, Any],
+    result: Dict[str, Any],
+) -> None:
+    events.append(
+        _event(
+            "tool_call",
+            name=name,
+            summary=summary,
+            arguments=arguments,
+            result=result,
+        )
+    )
+
+
+def _composer_create_node(
+    events: List[Dict[str, Any]],
+    graph: Dict[str, Any],
+    node_type: str,
+    position: Dict[str, float],
+    config: Dict[str, Any],
+    summary: Optional[str] = None,
+) -> Dict[str, Any]:
+    args = {"node_type": node_type, "position": position, "config": config}
+    result = execute_tool("create_canvas_node", args, graph)
+    _composer_append_tool_call(
+        events,
+        "create_canvas_node",
+        summary or f"create_node({node_type})",
+        args,
+        result,
+    )
+    return result
+
+
+def _composer_connect(
+    events: List[Dict[str, Any]],
+    graph: Dict[str, Any],
+    from_id: str,
+    to_id: str,
+) -> Dict[str, Any]:
+    args = {
+        "from_node_id": from_id,
+        "from_port": "output",
+        "to_node_id": to_id,
+        "to_port": "input",
+    }
+    result = execute_tool("connect_nodes", args, graph)
+    _composer_append_tool_call(events, "connect_nodes", "connect(...)", args, result)
+    return result
+
+
+def _export_chain_steps(
+    writer_type: str,
+    inspect: Dict[str, Any],
+) -> tuple[List[_ComposerChainStep], List[str]]:
+    enriched = enrich_inspect_geometry_flags(inspect)
+    resolved, _, msgs = resolve_spatial_export_writer(writer_type, enriched)
+    steps: List[_ComposerChainStep] = []
+    if is_spatial_writer(resolved):
+        heal_cfg = geometry_heal_step_config(enriched)
+        if heal_cfg:
+            steps.append(
+                _ComposerChainStep(
+                    "vertex_creator",
+                    heal_cfg,
+                    "create_node(vertex_creator)",
+                )
+            )
+    steps.append(
+        _ComposerChainStep(resolved, {}, f"create_node({resolved})"),
+    )
+    return steps, msgs
+
+
+def _emit_branch_pipeline(
+    events: List[Dict[str, Any]],
+    graph: Dict[str, Any],
+    *,
+    source_id: str,
+    origin: Dict[str, float],
+    branch_index: int,
+    filter_spec: Optional[Dict[str, str]],
+    writer_type: Optional[str],
+    inspect: Dict[str, Any],
+    created_ids: Dict[str, str],
+) -> None:
+    y = _branch_y(origin, branch_index)
+    column = 0
+    connect_from = source_id
+
+    if filter_spec:
+        column += 1
+        filter_node = _composer_create_node(
+            events,
+            graph,
+            "attribute_filter",
+            {"x": origin["x"] + COMPOSER_STEP_OFFSET_X * column, "y": y},
+            _filter_node_config(filter_spec),
+        )
+        created_ids[f"attribute_filter_{branch_index}"] = filter_node["id"]
+        _composer_connect(events, graph, connect_from, filter_node["id"])
+        connect_from = filter_node["id"]
+
+    if not writer_type:
+        return
+
+    chain_steps, msgs = _export_chain_steps(writer_type, inspect)
+    for msg in msgs:
+        events.append(_event("thought", content=msg))
+    for step in chain_steps:
+        column += 1
+        node = _composer_create_node(
+            events,
+            graph,
+            step.node_type,
+            {"x": origin["x"] + COMPOSER_STEP_OFFSET_X * column, "y": y},
+            step.config,
+            step.summary,
+        )
+        created_ids[f"{step.node_type}_{branch_index}"] = node["id"]
+        _composer_connect(events, graph, connect_from, node["id"])
+        connect_from = node["id"]
+        if step.node_type == "python_caller":
+            code = str(step.config.get("code") or "")
+            code_patch = execute_tool(
+                "update_node_code",
+                {"node_id": node["id"], "code": code, "language": "python"},
+                graph,
+            )
+            events.append(
+                _event(
+                    "code_diff",
+                    node_id=node["id"],
+                    language="python",
+                    diff=unified_diff("", code, "transform.py"),
+                    code=code,
+                    result=code_patch,
+                )
+            )
+
+
+def _build_composer_branches(
+    prompt: str,
+    schema_columns: List[str],
+    writer_type: Optional[str],
+) -> List[ParallelBranchObjective]:
+    parallel = parse_parallel_branch_objectives(prompt, schema_columns)
+    if len(parallel) >= 2:
+        return parallel
+    specs = parse_multiple_filter_specs(prompt, schema_columns)
+    if len(specs) > 1:
+        return [
+            ParallelBranchObjective(
+                text="",
+                filter_spec=spec,
+                writer_type=writer_type,
+            )
+            for spec in specs
+        ]
+    return []
+
+
+def _append_proactive_suggestions(
+    events: List[Dict[str, Any]],
+    prompt: str,
+    inspect: Dict[str, Any],
+    step_kinds: List[str],
+) -> None:
+    for suggestion in build_proactive_suggestions(prompt, inspect, step_kinds):
+        events.append(_event("thought", content=f"Suite possible : {suggestion}"))
+
+
 def plan_composer(
     prompt: str,
     current_graph: Optional[Dict[str, Any]] = None,
@@ -831,8 +1041,8 @@ def plan_composer(
         if isinstance(item, dict) and item.get("name")
     ]
     filter_spec = resolve_filter_spec(prompt, schema_columns)
+    enriched_inspect = enrich_inspect_geometry_flags(inspect_result)
 
-    # Cas cible : CSV → attribute_filter → GeoPackage
     use_filter_writer = bool(filter_spec) and writer_type in {
         "gpkg_writer",
         "geojson_writer",
@@ -840,17 +1050,62 @@ def plan_composer(
         "csv_writer",
         "postgis_writer",
     }
-    if not use_filter_writer and writer_type == "gpkg_writer":
-        filter_spec = filter_spec or {
-            "field": "POPULATION",
-            "operator": "gt",
-            "value": "5000",
-        }
-        use_filter_writer = True
 
     created_ids: Dict[str, str] = {}
+    branches = _build_composer_branches(prompt, schema_columns, writer_type)
+    step_kinds: List[str] = []
+    writer_labels = {
+        "gpkg_writer": "GeoPackage (.gpkg)",
+        "geojson_writer": "GeoJSON (.geojson)",
+        "shapefile_writer": "Shapefile (.shp)",
+        "csv_writer": "CSV (.csv)",
+        "postgis_writer": "PostGIS",
+    }
 
-    if use_filter_writer and filter_spec:
+    if len(branches) >= 2:
+        step_kinds = ["attribute_filter", "export"]
+        events.append(
+            _event(
+                "thought",
+                content=(
+                    f"{len(branches)} branche(s) parallèle(s) depuis la source "
+                    f"(décalage Y = {int(COMPOSER_BRANCH_OFFSET_Y)} px) — "
+                    "un nœud filtre et un writer par branche lorsque demandé."
+                ),
+            )
+        )
+        for branch_id, branch in enumerate(branches):
+            if branch.filter_spec or branch.writer_type:
+                label = writer_labels.get(branch.writer_type or "", branch.writer_type or "")
+                fs = branch.filter_spec
+                if fs and branch.writer_type:
+                    detail = (
+                        f"Branche {branch_id + 1} : filtre {fs['field']} "
+                        f"{fs.get('operator')} {fs['value']} → {label}"
+                    )
+                elif fs:
+                    detail = (
+                        f"Branche {branch_id + 1} : filtre {fs['field']} "
+                        f"{fs.get('operator')} {fs['value']}"
+                    )
+                else:
+                    detail = f"Branche {branch_id + 1} : export {label}"
+                events.append(_event("thought", content=detail))
+            _emit_branch_pipeline(
+                events,
+                graph,
+                source_id=source_id,
+                origin=origin,
+                branch_index=branch_id,
+                filter_spec=branch.filter_spec,
+                writer_type=branch.writer_type,
+                inspect=enriched_inspect,
+                created_ids=created_ids,
+            )
+
+    elif use_filter_writer and filter_spec:
+        step_kinds = ["attribute_filter", "export"]
+        out_type = writer_type or "gpkg_writer"
         op_label = {">": ">", "gt": ">", "gte": ">=", "lt": "<", "eq": "="}.get(
             filter_spec["operator"], filter_spec["operator"]
         )
@@ -860,83 +1115,21 @@ def plan_composer(
                 content=(
                     f"Filtrage de la colonne '{filter_spec['field']}' "
                     f"{op_label} {filter_spec['value']}, "
-                    "puis export vers un Writer GeoPackage."
+                    f"puis export {writer_labels.get(out_type, out_type)}."
                 ),
             )
         )
-        filter_args = {
-            "node_type": "attribute_filter",
-            "position": {"x": origin["x"] + 280, "y": origin["y"]},
-            "config": {
-                "field": filter_spec["field"],
-                "operator": filter_spec["operator"] if filter_spec["operator"] != "gte" else "gt",
-                "value": filter_spec["value"],
-            },
-        }
-        filter_node = execute_tool("create_canvas_node", filter_args, graph)
-        created_ids["attribute_filter"] = filter_node["id"]
-        events.append(
-            _event(
-                "tool_call",
-                name="create_canvas_node",
-                summary="create_node(attribute_filter)",
-                arguments=filter_args,
-                result=filter_node,
-            )
+        _emit_branch_pipeline(
+            events,
+            graph,
+            source_id=source_id,
+            origin=origin,
+            branch_index=0,
+            filter_spec=filter_spec,
+            writer_type=out_type,
+            inspect=enriched_inspect,
+            created_ids=created_ids,
         )
-
-        connect_filter_args = {
-            "from_node_id": source_id,
-            "from_port": "output",
-            "to_node_id": filter_node["id"],
-            "to_port": "input",
-        }
-        connect_filter = execute_tool("connect_nodes", connect_filter_args, graph)
-        events.append(
-            _event(
-                "tool_call",
-                name="connect_nodes",
-                summary="connect(...)",
-                arguments=connect_filter_args,
-                result=connect_filter,
-            )
-        )
-
-        out_type = writer_type or "gpkg_writer"
-        writer_args = {
-            "node_type": out_type,
-            "position": {"x": origin["x"] + 560, "y": origin["y"]},
-            "config": {},
-        }
-        writer_node = execute_tool("create_canvas_node", writer_args, graph)
-        created_ids[out_type] = writer_node["id"]
-        events.append(
-            _event(
-                "tool_call",
-                name="create_canvas_node",
-                summary=f"create_node({out_type})",
-                arguments=writer_args,
-                result=writer_node,
-            )
-        )
-
-        connect_writer_args = {
-            "from_node_id": filter_node["id"],
-            "from_port": "output",
-            "to_node_id": writer_node["id"],
-            "to_port": "input",
-        }
-        connect_writer = execute_tool("connect_nodes", connect_writer_args, graph)
-        events.append(
-            _event(
-                "tool_call",
-                name="connect_nodes",
-                summary="connect(...)",
-                arguments=connect_writer_args,
-                result=connect_writer,
-            )
-        )
-
         if _wants_python(prompt):
             code = _python_filter_code(
                 filter_spec["field"],
@@ -945,7 +1138,10 @@ def plan_composer(
             )
             py_args = {
                 "node_type": "python_caller",
-                "position": {"x": origin["x"] + 280, "y": origin["y"] + 140},
+                "position": {
+                    "x": origin["x"] + COMPOSER_STEP_OFFSET_X,
+                    "y": origin["y"] + COMPOSER_BRANCH_OFFSET_Y,
+                },
                 "config": {"language": "python", "code": code},
             }
             py_node = execute_tool("create_canvas_node", py_args, graph)
@@ -966,6 +1162,7 @@ def plan_composer(
             )
 
     elif filter_spec and not use_filter_writer and not _wants_python(prompt):
+        step_kinds = ["attribute_filter"]
         op_label = {
             ">": ">",
             "gt": ">",
@@ -984,42 +1181,36 @@ def plan_composer(
                 ),
             )
         )
-        filter_args = {
-            "node_type": "attribute_filter",
-            "position": {"x": origin["x"] + 280, "y": origin["y"]},
-            "config": {
-                "field": filter_spec["field"],
-                "operator": filter_spec["operator"]
-                if filter_spec["operator"] != "gte"
-                else "gt",
-                "value": filter_spec["value"],
-            },
-        }
-        filter_node = execute_tool("create_canvas_node", filter_args, graph)
-        created_ids["attribute_filter"] = filter_node["id"]
+        _emit_branch_pipeline(
+            events,
+            graph,
+            source_id=source_id,
+            origin=origin,
+            branch_index=0,
+            filter_spec=filter_spec,
+            writer_type=None,
+            inspect=enriched_inspect,
+            created_ids=created_ids,
+        )
+
+    elif writer_type and not filter_spec and not _wants_python(prompt):
+        step_kinds = ["export"]
         events.append(
             _event(
-                "tool_call",
-                name="create_canvas_node",
-                summary="create_node(attribute_filter)",
-                arguments=filter_args,
-                result=filter_node,
+                "thought",
+                content=f"Export direct vers {writer_labels.get(writer_type, writer_type)}.",
             )
         )
-        connect_filter_args = {
-            "from_node_id": source_id,
-            "from_port": "output",
-            "to_node_id": filter_node["id"],
-            "to_port": "input",
-        }
-        events.append(
-            _event(
-                "tool_call",
-                name="connect_nodes",
-                summary="connect(...)",
-                arguments=connect_filter_args,
-                result=execute_tool("connect_nodes", connect_filter_args, graph),
-            )
+        _emit_branch_pipeline(
+            events,
+            graph,
+            source_id=source_id,
+            origin=origin,
+            branch_index=0,
+            filter_spec=None,
+            writer_type=writer_type,
+            inspect=enriched_inspect,
+            created_ids=created_ids,
         )
 
     elif _wants_python(prompt) and filter_spec:
@@ -1157,6 +1348,14 @@ def plan_composer(
                         ),
                     )
                 )
+
+    if created_ids:
+        _append_proactive_suggestions(
+            events,
+            prompt,
+            enriched_inspect,
+            step_kinds or ["export"],
+        )
 
     sequence = [
         item.get("summary")

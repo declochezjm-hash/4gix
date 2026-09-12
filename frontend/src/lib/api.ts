@@ -564,6 +564,7 @@ export type StepArchitectResult = {
 export type ExecutionHealResult = {
 	ok: boolean;
 	explanation?: string;
+	chat_message?: string;
 	error?: string;
 	failed_node_id?: string;
 	corrective_steps?: Array<Record<string, unknown>>;
