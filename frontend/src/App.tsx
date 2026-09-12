@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ComposerAgentProvider } from "./components/agent/ComposerAgentContext";
 import { ComposerDrawer } from "./components/agent/ComposerDrawer";
+import { ShapefileHealBridge } from "./components/agent/ShapefileHealBridge";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
 import { TopBar } from "./components/Header/TopBar";
@@ -134,6 +135,7 @@ export default function App() {
 								<FlowCanvas />
 								<NodePanelRight />
 								<NodeModal />
+								<ShapefileHealBridge />
 								<ComposerDrawer />
 							</main>
 						</div>

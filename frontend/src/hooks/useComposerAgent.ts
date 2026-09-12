@@ -10,14 +10,23 @@ export type ComposerMessageType =
 	| "thought"
 	| "tool_call"
 	| "code_diff"
+	| "mapping_choices"
 	| "done"
 	| "error";
+
+export type ComposerMappingChoice = {
+	id: string;
+	label: string;
+	description: string;
+	node_type?: string;
+};
 
 export interface ComposerMessage {
 	type: ComposerMessageType;
 	content?: string;
 	tool?: string;
 	summary?: string;
+	choices?: ComposerMappingChoice[];
 	result?: {
 		node?: Node<FlowNodeData>;
 		edge?: Edge;
@@ -177,6 +186,12 @@ function normalizeComposerEvent(
 			result: { code: raw.code, diff: raw.diff },
 		};
 	}
+	if (type === "mapping_choices") {
+		const choices = Array.isArray(raw.choices)
+			? (raw.choices as ComposerMappingChoice[])
+			: [];
+		return { type: "mapping_choices", content: raw.content, choices };
+	}
 	if (type === "done") return { type: "done" };
 	if (type === "tool_call") {
 		const resultObj =
@@ -214,6 +229,8 @@ export type ComposerSendOptions = {
 	nodeId?: string;
 	sourceNodeId?: string | null;
 	contextMentions?: string[];
+	mappingChoiceId?: string;
+	promptOverride?: string;
 };
 
 export function useComposerAgent() {
@@ -225,6 +242,10 @@ export function useComposerAgent() {
 	const [proposedNodes, setProposedNodes] = useState<Node<FlowNodeData>[]>([]);
 	const [proposedEdges, setProposedEdges] = useState<Edge[]>([]);
 	const [error, setError] = useState<string | null>(null);
+	const [mappingChoices, setMappingChoices] = useState<ComposerMappingChoice[]>(
+		[],
+	);
+	const lastPromptRef = useRef<string>("");
 	const abortRef = useRef<AbortController | null>(null);
 
 	const setComposerBusy = useCallback((busy: boolean) => {
@@ -236,6 +257,13 @@ export function useComposerAgent() {
 	const discardProposals = useCallback(() => {
 		setProposedNodes([]);
 		setProposedEdges([]);
+	}, []);
+
+	const pushProactiveAssistant = useCallback((content: string) => {
+		const text = content.trim();
+		if (!text) return;
+		setMessages((prev) => [...prev, { type: "thought", content: text }]);
+		setThoughts((prev) => [...prev, text]);
 	}, []);
 
 	const sendPrompt = useCallback(
@@ -257,6 +285,8 @@ export function useComposerAgent() {
 			setProposedNodes([]);
 			setProposedEdges([]);
 			setError(null);
+			setMappingChoices([]);
+			lastPromptRef.current = trimmed;
 
 			const payload = graphForComposerAgent(currentGraph);
 			const nodeId = options.nodeId ?? options.selectedNodeId ?? null;
@@ -267,12 +297,13 @@ export function useComposerAgent() {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						prompt: trimmed,
+						prompt: options.promptOverride?.trim() || trimmed,
 						node_id: nodeId,
 						source_node_id: options.sourceNodeId ?? null,
 						selected_node_id: selectedNodeId,
 						current_graph: payload,
 						context_mentions: options.contextMentions ?? [],
+						mapping_choice_id: options.mappingChoiceId ?? null,
 					}),
 					signal: controller.signal,
 				});
@@ -311,6 +342,8 @@ export function useComposerAgent() {
 										: [...prev, proposedEdge],
 								);
 							}
+						} else if (event.type === "mapping_choices" && event.choices?.length) {
+							setMappingChoices(event.choices);
 						} else if (event.type === "error") {
 							setError(event.content ?? "Erreur Composer.");
 						} else if (event.type === "done") {
@@ -332,8 +365,26 @@ export function useComposerAgent() {
 		[setComposerBusy],
 	);
 
+	const applyMappingChoice = useCallback(
+		async (
+			choiceId: string,
+			currentGraph: ComposerGraph,
+			options: ComposerSendOptions = {},
+		) => {
+			const prompt = lastPromptRef.current.trim() || "fait un mappage";
+			await sendPrompt(prompt, currentGraph, {
+				...options,
+				mappingChoiceId: choiceId,
+				promptOverride: prompt,
+			});
+		},
+		[sendPrompt],
+	);
+
 	return {
 		sendPrompt,
+		applyMappingChoice,
+		pushProactiveAssistant,
 		discardProposals,
 		isThinking,
 		isLoading,
@@ -345,6 +396,7 @@ export function useComposerAgent() {
 		proposedEdges,
 		setProposedNodes,
 		setProposedEdges,
+		mappingChoices,
 		error,
 	};
 }

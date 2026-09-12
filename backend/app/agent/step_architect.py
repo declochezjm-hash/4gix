@@ -7,10 +7,17 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from app.agent.composer import (
+    build_mapping_choice_options,
     detect_export_writer,
+    mapping_has_explicit_detail,
+    mapping_step_summary,
+    needs_mapping_guidance,
     parse_multiple_filter_specs,
     parse_parallel_branch_objectives,
     parse_target_crs,
+    resolve_mapping_choice,
+    wants_data_cleaning_intent,
+    wants_mapping_intent,
     _wants_analysis,
     _wants_reproject,
 )
@@ -363,10 +370,33 @@ def build_step_plan(
                 )
             )
 
+    if not steps and needs_mapping_guidance(objective):
+        choice_id = (
+            "dedupe_essential"
+            if wants_data_cleaning_intent(objective) and not wants_mapping_intent(objective)
+            else "snake_case"
+        )
+        if mapping_has_explicit_detail(objective, schema_columns):
+            choice = resolve_mapping_choice(choice_id, schema_columns)
+            if choice:
+                steps.append(
+                    StepDefinition(
+                        kind="mapping",
+                        summary=mapping_step_summary(choice_id),
+                        node_type=str(choice["node_type"]),
+                        config=dict(choice.get("config") or {}),
+                    )
+                )
+
     if not steps:
         steps.append(_inspect_step())
 
     notices: List[str] = []
+    if needs_mapping_guidance(objective) and not mapping_has_explicit_detail(
+        objective, schema_columns
+    ):
+        for option in build_mapping_choice_options(schema_columns):
+            notices.append(f"{option['label']} — {option['description']}")
     return _expand_geometry_heal_steps(steps, inspect, notices), notices
 
 
@@ -506,6 +536,22 @@ def plan_step_architect(
         inspect,
         [step.kind for step in steps],
     )
+    schema_fields = inspect.get("fields") if isinstance(inspect.get("fields"), list) else []
+    schema_columns = [
+        str(item.get("name"))
+        for item in schema_fields
+        if isinstance(item, dict) and item.get("name")
+    ]
+    if needs_mapping_guidance(global_objective) and not mapping_has_explicit_detail(
+        global_objective, schema_columns
+    ):
+        mapping_hints = [
+            f"{opt['label']} — {opt['description']}"
+            for opt in build_mapping_choice_options(schema_columns)
+        ]
+        proactive_suggestions = mapping_hints + [
+            item for item in proactive_suggestions if item not in mapping_hints
+        ]
 
     if current_step_index < 0:
         current_step_index = 0

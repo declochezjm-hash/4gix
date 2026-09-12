@@ -65,6 +65,10 @@ class ComposerRequest(BaseModel):
         default_factory=list,
         description="Références @Schema, @Input, etc.",
     )
+    mapping_choice_id: Optional[str] = Field(
+        default=None,
+        description="Option de mappage (snake_case, dedupe_essential, cnig_covadis).",
+    )
 
 
 def _sse_pack(event: Dict[str, Any]) -> str:
@@ -90,6 +94,7 @@ async def composer(request: ComposerRequest) -> StreamingResponse:
         context_mentions=request.context_mentions,
         source_node_id=request.source_node_id,
         node_id=request.node_id or request.selected_node_id,
+        mapping_choice_id=request.mapping_choice_id,
     )
     return StreamingResponse(
         _sse_stream(events),

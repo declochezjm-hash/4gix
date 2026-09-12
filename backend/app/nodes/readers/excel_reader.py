@@ -39,5 +39,17 @@ class ExcelReader(Base4GIxNode):
         path = resolve_workspace_path(params.get("path"))
         sheet = (params.get("sheet_name") or "").strip() or None
         payload = read_excel_file(path, sheet_name=sheet)
-        payload["metadata"]["available_sheets"] = list_excel_sheets(path)
+        meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        if meta.get("excel_fallback_csv"):
+            payload["metadata"] = {
+                **meta,
+                "available_sheets": meta.get("sheets") or [],
+            }
+            return payload
+        try:
+            payload["metadata"]["available_sheets"] = list_excel_sheets(path)
+        except Exception:
+            sheets = meta.get("sheets")
+            if isinstance(sheets, list):
+                payload["metadata"]["available_sheets"] = sheets
         return payload

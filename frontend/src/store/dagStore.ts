@@ -36,6 +36,7 @@ import {
 	wsExecuteUrl,
 	zipLooksLikeShapefile,
 } from "../lib/api";
+import { SHAPEFILE_INCOMPLETE_CHAT_MESSAGE } from "../lib/shapefileGuidance";
 import {
 	graphForDirectProcess,
 	parseChatHistory,
@@ -200,6 +201,9 @@ type DagState = {
 	applyComposerProposals: () => void;
 	composerDrawerOpen: boolean;
 	setComposerDrawerOpen: (open: boolean) => void;
+	shapefileProactivePrompt: string | null;
+	queueShapefileProactivePrompt: (message: string) => void;
+	clearShapefileProactivePrompt: () => void;
 };
 
 function schemaDefaults(entry: CatalogNode): Record<string, unknown> {
@@ -390,6 +394,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 	appView: "editor",
 	mapView: null,
 	composerDrawerOpen: false,
+	shapefileProactivePrompt: null,
 	stepProposalNodes: [],
 	stepProposalEdges: [],
 	isArchitectGenerating: false,
@@ -1208,7 +1213,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 				geotiff: "GeoTIFF",
 			};
 			const kind = typeLabels[payload.detected_type] || payload.detected_type;
-			const shpSoloHint = file.name.toLowerCase().endsWith(".shp")
+			const isSoloShp = file.name.toLowerCase().endsWith(".shp");
+			const shpSoloHint = isSoloShp
 				? " — préférez un .zip (.shp+.shx+.dbf) pour les attributs"
 				: "";
 			set({
@@ -1218,6 +1224,10 @@ export const useDagStore = create<DagState>((set, get) => ({
 				nodePanelOpen: false,
 				error: null,
 				importNotice: `${kind} · ${file.name}${shpSoloHint}`,
+				shapefileProactivePrompt: isSoloShp
+					? SHAPEFILE_INCOMPLETE_CHAT_MESSAGE
+					: null,
+				composerDrawerOpen: isSoloShp ? true : get().composerDrawerOpen,
 			});
 		} catch (err) {
 			set({
@@ -1261,6 +1271,11 @@ export const useDagStore = create<DagState>((set, get) => ({
 	setCanvasLocked: (locked) => set({ canvasLocked: locked }),
 
 	setComposerDrawerOpen: (open) => set({ composerDrawerOpen: open }),
+
+	queueShapefileProactivePrompt: (message) =>
+		set({ shapefileProactivePrompt: message.trim() || null }),
+
+	clearShapefileProactivePrompt: () => set({ shapefileProactivePrompt: null }),
 
 	appendStepProposals: (proposedNodes, proposedEdges) => {
 		const state = get();

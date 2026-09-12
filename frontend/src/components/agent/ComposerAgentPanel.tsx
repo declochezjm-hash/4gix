@@ -49,6 +49,8 @@ export function ComposerAgentPanel({
 		rejectAll,
 		hasProposals,
 		setComposerBusy,
+		mappingChoices,
+		applyMappingChoice,
 	} = useComposerAgentContext();
 
 	const composerBusy = isGenerating || isLoading;
@@ -143,11 +145,8 @@ export function ComposerAgentPanel({
 		});
 	};
 
-	const handleSend = async () => {
-		const trimmed = promptText.trim();
-		if (!trimmed || composerBusy) return;
-		persistPrompt(trimmed);
-		const enriched = graphForComposerAgent({
+	const composerGraphPayload = () =>
+		graphForComposerAgent({
 			nodes: nodes.map((node) => {
 				const snap = snapshots[node.id];
 				if (!snap) return node;
@@ -162,6 +161,12 @@ export function ComposerAgentPanel({
 			}),
 			edges,
 		});
+
+	const handleSend = async () => {
+		const trimmed = promptText.trim();
+		if (!trimmed || composerBusy) return;
+		persistPrompt(trimmed);
+		const enriched = composerGraphPayload();
 		try {
 			await sendPrompt(trimmed, enriched, {
 				nodeId: composerNodeId,
@@ -321,6 +326,37 @@ export function ComposerAgentPanel({
 			) : null}
 
 			{error ? <p className="composer-agent-panel__error">{error}</p> : null}
+
+			{mappingChoices.length ? (
+				<section className="composer-agent-panel__mapping-choices">
+					<h3>Propositions de mappage</h3>
+					<ul>
+						{mappingChoices.map((choice) => (
+							<li key={choice.id}>
+								<p>
+									<strong>{choice.label}</strong>
+									<br />
+									<span>{choice.description}</span>
+								</p>
+								<button
+									type="button"
+									className="composer-agent-panel__accept"
+									disabled={composerBusy}
+									onClick={() =>
+										void applyMappingChoice(choice.id, composerGraphPayload(), {
+											nodeId: composerNodeId,
+											selectedNodeId: composerNodeId,
+											sourceNodeId,
+										})
+									}
+								>
+									Appliquer
+								</button>
+							</li>
+						))}
+					</ul>
+				</section>
+			) : null}
 
 			<textarea
 				ref={textareaRef}

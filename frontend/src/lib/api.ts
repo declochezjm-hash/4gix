@@ -565,6 +565,8 @@ export type ExecutionHealResult = {
 	ok: boolean;
 	explanation?: string;
 	chat_message?: string;
+	suggest_shapefile_zip_upload?: boolean;
+	suggest_excel_openpyxl_install?: boolean;
 	error?: string;
 	failed_node_id?: string;
 	corrective_steps?: Array<Record<string, unknown>>;

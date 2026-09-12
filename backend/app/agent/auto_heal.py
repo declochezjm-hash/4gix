@@ -25,6 +25,14 @@ from app.agent.tools import (
     inspect_input_schema,
     node_type_of,
 )
+from app.core.readers.excel_reader import (
+    EXCEL_MISSING_OPENPYXL_MESSAGE,
+    is_openpyxl_import_error,
+)
+from app.core.shapefile_bundle import (
+    is_shapefile_incomplete_error,
+    shapefile_incomplete_chat_message,
+)
 
 
 def _upstream_parent(graph: Dict[str, Any], node_id: str) -> Optional[str]:
@@ -50,6 +58,37 @@ def plan_execution_heal(
             "error": f"Nœud en échec introuvable : {failed_node_id}",
         }
     failed_type = node_type_of(failed)
+
+    if failed_type == "excel_reader" or is_openpyxl_import_error(error_message):
+        return {
+            "ok": False,
+            "error": "Lecture Excel impossible (openpyxl manquant ou indisponible).",
+            "explanation": error_message,
+            "chat_message": EXCEL_MISSING_OPENPYXL_MESSAGE,
+            "suggest_excel_openpyxl_install": True,
+            "follow_up_actions": [
+                "pip install openpyxl puis redémarrer le backend FastAPI.",
+                "Ou déposer un fichier .csv exporté depuis la même feuille Excel.",
+            ],
+            "failed_node_id": failed_node_id,
+        }
+
+    if failed_type == "shapefile_reader" or is_shapefile_incomplete_error(
+        error_message
+    ):
+        return {
+            "ok": False,
+            "error": "Shapefile incomplet ou sidecars manquants.",
+            "explanation": error_message,
+            "chat_message": shapefile_incomplete_chat_message(error_message),
+            "suggest_shapefile_zip_upload": True,
+            "follow_up_actions": [
+                "Glissez-déposer une archive .zip (.shp + .shx + .dbf) sur le canvas.",
+                "Ou déposez les fichiers .dbf et .shx avec le même nom de couche dans uploads/.",
+            ],
+            "failed_node_id": failed_node_id,
+        }
+
     if not is_geometry_related_error(error_message) and not is_spatial_writer(
         failed_type
     ):

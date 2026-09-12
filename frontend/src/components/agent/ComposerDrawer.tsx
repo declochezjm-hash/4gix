@@ -47,6 +47,8 @@ export function ComposerDrawer() {
 		validateAndAdvanceStep,
 		adjustStepPrompt,
 		setAdjustStepPrompt,
+		mappingChoices,
+		applyMappingChoice,
 	} = useComposerAgentContext();
 
 	const [targetedPrompt, setTargetedPrompt] = useState("");
@@ -337,6 +339,36 @@ export function ComposerDrawer() {
 						) : null}
 						{error ? (
 							<p className="composer-agent-panel__error">{error}</p>
+						) : null}
+						{mappingChoices.length ? (
+							<section className="composer-agent-panel__mapping-choices">
+								<h3>Propositions de mappage</h3>
+								<ul>
+									{mappingChoices.map((choice) => (
+										<li key={choice.id}>
+											<p>
+												<strong>{choice.label}</strong>
+												<br />
+												<span>{choice.description}</span>
+											</p>
+											<button
+												type="button"
+												className="composer-agent-panel__accept"
+												disabled={isThinking}
+												onClick={() =>
+													void applyMappingChoice(choice.id, enrichedGraph, {
+														selectedNodeId: anchorNodeId || undefined,
+														nodeId: anchorNodeId || undefined,
+														sourceNodeId,
+													})
+												}
+											>
+												Appliquer
+											</button>
+										</li>
+									))}
+								</ul>
+							</section>
 						) : null}
 						{hasProposals ? (
 							<div className="composer-agent-panel__review">

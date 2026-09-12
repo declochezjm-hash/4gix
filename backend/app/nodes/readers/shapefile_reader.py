@@ -10,76 +10,24 @@ import geopandas as gpd
 
 from app.core.paths import resolve_workspace_path, workspace_subdir
 from app.core.readers.shapefile import shapefile_read_outputs
+from app.core.shapefile_bundle import (
+    SHAPEFILE_INCOMPLETE_CHAT_MESSAGE,
+    ShapefileIncompleteError,
+    collect_shapefile_parts,
+    find_matching_zip_in_uploads,
+    is_shapefile_incomplete_error,
+    logical_stem,
+    shapefile_incomplete_chat_message,
+)
 from app.nodes.base import Base4GIxNode
 
-SHAPEFILE_SIDECAR = (".shx", ".dbf", ".prj", ".cpg")
-SHAPEFILE_OPTIONAL = (".prj", ".cpg", ".sbn", ".sbx", ".xml", ".qix", ".fix")
-
-
-def _is_upload_uuid_prefix(prefix: str) -> bool:
-    return len(prefix) == 10 and all(ch in "0123456789abcdef" for ch in prefix.lower())
-
-
-def _logical_stem(filename: str) -> str:
-    """Nom de couche sans préfixe d'upload `xxxxxxxxxx-`."""
-    stem = Path(filename).stem
-    if "-" not in stem:
-        return stem
-    prefix, rest = stem.split("-", 1)
-    if _is_upload_uuid_prefix(prefix) and rest:
-        return rest
-    return stem
-
-
-def _glob_sidecar(directory: Path, logical_stem: str, ext: str) -> Optional[Path]:
-    for pattern in (f"{logical_stem}{ext}", f"*-{logical_stem}{ext}"):
-        matches = sorted(directory.glob(pattern))
-        if matches:
-            return matches[0]
-    return None
-
-
-def _search_dirs_for_shapefile(shp_path: Path) -> List[Path]:
-    dirs: List[Path] = [shp_path.parent.resolve()]
-    uploads = workspace_subdir("uploads", create=False)
-    if uploads.is_dir():
-        resolved = uploads.resolve()
-        if resolved not in dirs:
-            dirs.append(resolved)
-    return dirs
-
-
-def _collect_shapefile_parts(shp_path: Path) -> Dict[str, Path]:
-    """Rassemble .shp/.shx/.dbf (et sidecars optionnels) pour une lecture Fiona."""
-    shp_path = shp_path.resolve()
-    if shp_path.suffix.lower() != ".shp":
-        raise ValueError(f"Attendu un fichier .shp, reçu: {shp_path.name}")
-
-    logical = _logical_stem(shp_path.name)
-    stem = shp_path.with_suffix("")
-    parts: Dict[str, Path] = {".shp": shp_path}
-
-    for ext in SHAPEFILE_SIDECAR + tuple(
-        item for item in SHAPEFILE_OPTIONAL if item not in SHAPEFILE_SIDECAR
-    ):
-        local = stem.with_suffix(ext)
-        if local.is_file():
-            parts[ext] = local
-            continue
-        for directory in _search_dirs_for_shapefile(shp_path):
-            found = _glob_sidecar(directory, logical, ext)
-            if found and found.is_file():
-                parts[ext] = found.resolve()
-                break
-
-    missing = [ext for ext in (".shx", ".dbf") if ext not in parts]
-    if missing:
-        raise ValueError(
-            f"Shapefile incomplet ({shp_path.name}) : manque {', '.join(missing)} "
-            f"dans {shp_path.parent} ou dans uploads/. "
-            "Glissez une archive .zip contenant .shp, .shx et .dbf (recommandé).",
-        )
-    return parts
+__all__ = [
+    "ShapefileReader",
+    "SHAPEFILE_INCOMPLETE_CHAT_MESSAGE",
+    "ShapefileIncompleteError",
+    "is_shapefile_incomplete_error",
+    "shapefile_incomplete_chat_message",
+]
 
 
 def _resolve_shapefile_bundle(shp_path: Path) -> Path:
@@ -87,8 +35,8 @@ def _resolve_shapefile_bundle(shp_path: Path) -> Path:
     Retourne le chemin .shp à lire, en regroupant les sidecars (.dbf, .shx, …)
     dans un dossier unique si nécessaire (ex. .dbf dans uploads/).
     """
-    parts = _collect_shapefile_parts(shp_path)
-    logical = _logical_stem(shp_path.name)
+    parts = collect_shapefile_parts(shp_path)
+    layer = logical_stem(shp_path.name)
     target_stem = shp_path.with_suffix("").resolve()
     needs_stage = False
     for ext, src in parts.items():
@@ -104,10 +52,10 @@ def _resolve_shapefile_bundle(shp_path: Path) -> Path:
 
     bundle_dir = workspace_subdir("imports", f"bundle-{uuid.uuid4().hex[:10]}", create=True)
     for ext, src in parts.items():
-        dest = bundle_dir / f"{logical}{ext}"
+        dest = bundle_dir / f"{layer}{ext}"
         if not dest.is_file() or src.resolve() != dest.resolve():
             shutil.copy2(src, dest)
-    staged = (bundle_dir / f"{logical}.shp").resolve()
+    staged = (bundle_dir / f"{layer}.shp").resolve()
     if not staged.is_file():
         raise FileNotFoundError(f"Assemblage Shapefile incomplet pour {shp_path.name}.")
     return staged
@@ -155,18 +103,65 @@ def _read_shapefile_path(path: Path, encoding: Optional[str]) -> gpd.GeoDataFram
             if not shp_path.with_suffix(ext).is_file()
         ]
         if missing:
-            raise ValueError(
-                f"Shapefile incomplet ({shp_path.name}) : manque {', '.join(missing)}. "
-                "Glissez une archive .zip contenant .shp, .shx et .dbf (recommandé).",
+            raise ShapefileIncompleteError(
+                f"Shapefile incomplet ({shp_path.name}) : manque {', '.join(missing)}.",
+                missing=missing,
             ) from exc
         raise
     if list(gdf.columns) == ["geometry"] or len(gdf.columns) <= 1:
         dbf = shp_path.with_suffix(".dbf")
         if not dbf.is_file():
-            raise ValueError(
+            raise ShapefileIncompleteError(
                 f"Table d'attributs (.dbf) introuvable pour {shp_path.name}.",
+                missing=[".dbf"],
             )
     return gdf
+
+
+def _read_from_zip_path(
+    path: Path,
+    layer_name: Optional[str],
+) -> tuple[gpd.GeoDataFrame, Dict[str, Any]]:
+    from app.core.shapefile_import import (
+        _extract_shapefile_sidecars,
+        _geojson_payload,
+        _read_geodataframe,
+        discover_shapefile_sets,
+        list_zip_entries,
+    )
+
+    if not path.is_file():
+        raise FileNotFoundError(f"Archive Shapefile introuvable: {path}")
+    entries = list_zip_entries(path.read_bytes())
+    sets = discover_shapefile_sets(entries)
+    chosen = _pick_shapefile_set(sets, layer_name)
+    inner_shp = chosen["shp_path_in_zip"]
+    shp_file = _extract_shapefile_sidecars(path, inner_shp)
+    gdf = _read_geodataframe(shp_file)
+    _geojson, _map, meta = _geojson_payload(gdf)
+    meta["zip_path"] = str(path)
+    return gdf, meta
+
+
+def _resolve_shp_or_zip(path: Path, layer_name: Optional[str]) -> tuple[Path, bool]:
+    """
+    Retourne (chemin_effectif, from_zip).
+    Tente une archive .zip homonyme dans uploads/ si le .shp est incomplet.
+    """
+    if path.suffix.lower() == ".zip":
+        return path, True
+    if path.suffix.lower() != ".shp":
+        return path, False
+
+    try:
+        collect_shapefile_parts(path)
+        return path, False
+    except ShapefileIncompleteError:
+        layer = logical_stem(path.name)
+        zip_path = find_matching_zip_in_uploads(layer)
+        if zip_path:
+            return zip_path, True
+        raise
 
 
 class ShapefileReader(Base4GIxNode):
@@ -221,37 +216,37 @@ class ShapefileReader(Base4GIxNode):
         layer_name = (params.get("layer_name") or "").strip() or None
         encoding = (params.get("encoding") or "").strip() or None
 
-        if path.suffix.lower() == ".zip":
-            from app.core.shapefile_import import (
-                _extract_shapefile_sidecars,
-                _geojson_payload,
-                _read_geodataframe,
-                discover_shapefile_sets,
-                list_zip_entries,
-            )
-
-            if not path.is_file():
-                raise FileNotFoundError(f"Archive Shapefile introuvable: {path}")
-            entries = list_zip_entries(path.read_bytes())
-            sets = discover_shapefile_sets(entries)
-            chosen = _pick_shapefile_set(sets, layer_name)
-            inner_shp = chosen["shp_path_in_zip"]
-            shp_file = _extract_shapefile_sidecars(path, inner_shp)
-            gdf = _read_geodataframe(shp_file)
-            geojson, map_geojson, meta = _geojson_payload(gdf)
-            meta["zip_path"] = str(path)
-            return {
-                "data": geojson,
-                "map_geojson": map_geojson,
-                "metadata": meta,
-            }
+        zip_hint = (params.get("zip_path") or "").strip()
+        if zip_hint and path.suffix.lower() != ".zip":
+            zip_resolved = resolve_workspace_path(zip_hint)
+            if zip_resolved.is_file():
+                path = zip_resolved
 
         if not path.is_file():
             raise FileNotFoundError(
                 f"Shapefile introuvable: {path} (vérifiez le chemin /workspace ou réimportez le fichier).",
             )
 
-        gdf = _read_shapefile_path(path, encoding)
+        try:
+            effective, from_zip = _resolve_shp_or_zip(path, layer_name)
+        except ShapefileIncompleteError as exc:
+            raise ShapefileIncompleteError(
+                SHAPEFILE_INCOMPLETE_CHAT_MESSAGE,
+                missing=exc.missing,
+            ) from exc
+
+        if from_zip or effective.suffix.lower() == ".zip":
+            gdf, zip_meta = _read_from_zip_path(effective, layer_name)
+            geojson, map_geojson, meta = shapefile_read_outputs(gdf)
+            meta.update(zip_meta)
+            meta["columns"] = [col for col in gdf.columns if col != "geometry"]
+            return {
+                "data": geojson,
+                "map_geojson": map_geojson,
+                "metadata": meta,
+            }
+
+        gdf = _read_shapefile_path(effective, encoding)
         geojson, map_geojson, meta = shapefile_read_outputs(gdf)
         meta["columns"] = [col for col in gdf.columns if col != "geometry"]
         meta.update(

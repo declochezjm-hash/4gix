@@ -274,18 +274,21 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			),
 		})
 			.then((heal) => {
+				const chatContent =
+					(typeof heal.chat_message === "string" && heal.chat_message) ||
+					(heal.ok
+						? `${heal.explanation || "Erreur détectée."}\n\nCorrectif proposé : Vertex Creator (XY) ou bascule CSV.`
+						: "");
+				if (chatContent) {
+					appendChat({
+						role: "assistant",
+						content: chatContent,
+						at: new Date().toISOString(),
+					});
+					pushThinking(heal.explanation || chatContent);
+				}
 				if (!heal.ok) return;
 				setPendingHeal(heal);
-				appendChat({
-					role: "assistant",
-					content:
-						(typeof heal.chat_message === "string" && heal.chat_message) ||
-						`${heal.explanation || "Erreur détectée."}\n\nCorrectif proposé : Vertex Creator (XY) ou bascule CSV.`,
-					at: new Date().toISOString(),
-				});
-				pushThinking(
-					heal.explanation || "Auto-healing : correctif disponible.",
-				);
 				const autoHeal = node?.data.params?.auto_heal !== false;
 				if (autoHeal && heal.proposed_node && heal.proposed_edge) {
 					applyHealFromResult(heal);

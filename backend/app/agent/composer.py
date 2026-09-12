@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import difflib
+import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -645,6 +647,177 @@ def _wants_analysis(prompt: str) -> bool:
     )
 
 
+def wants_mapping_intent(prompt: str) -> bool:
+    text = (prompt or "").lower()
+    if any(
+        token in text
+        for token in (
+            "mappage",
+            "mapping",
+            "remap",
+            "remapper",
+            "attribute mapper",
+            "attribute_mapper",
+            "attribute mapper",
+            "map values",
+        )
+    ):
+        return True
+    return "renommer" in text and any(
+        token in text for token in ("colonne", "colonnes", "champ", "attribut")
+    )
+
+
+def wants_data_cleaning_intent(prompt: str) -> bool:
+    text = (prompt or "").lower()
+    return any(
+        token in text
+        for token in (
+            "nettoy",
+            "nettoye",
+            "clean",
+            "doublon",
+            "dédoubl",
+            "dedup",
+            "dedoubl",
+        )
+    )
+
+
+def needs_mapping_guidance(prompt: str) -> bool:
+    return wants_mapping_intent(prompt) or wants_data_cleaning_intent(prompt)
+
+
+def column_to_snake(name: str) -> str:
+    folded = (
+        unicodedata.normalize("NFKD", str(name))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+    folded = re.sub(r"[^\w]+", "_", folded)
+    folded = re.sub(r"_+", "_", folded).strip("_")
+    return folded or "field"
+
+
+def mapping_has_explicit_detail(prompt: str, columns: List[str]) -> bool:
+    text = prompt or ""
+    lower = text.lower()
+    if re.search(r"\{[^}]+\}", text):
+        return True
+    if "->" in text or "→" in text or re.search(r"\bvers\b", lower):
+        return True
+    if wants_mapping_intent(text) or wants_data_cleaning_intent(text):
+        for col in columns:
+            if col and col.lower() in lower:
+                return True
+    return False
+
+
+def _build_snake_case_mapping(columns: List[str]) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for col in columns:
+        target = column_to_snake(col)
+        if target and target != col:
+            mapping[col] = target
+    return mapping
+
+
+_CNIG_FIELD_HINTS: Dict[str, tuple[str, ...]] = {
+    "id": ("id", "gid", "objectid", "identifiant"),
+    "code_insee": ("code_insee", "insee", "code_commune", "code_foyer"),
+    "nom": ("nom", "name", "libelle", "libellé", "label"),
+    "type": ("type", "type_suppo", "type_support", "typologie"),
+    "date_maj": ("date", "maj", "updated", "timestamp"),
+}
+
+
+def _build_cnig_mapping(columns: List[str]) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for col in columns:
+        snake = column_to_snake(col)
+        std_name = None
+        for std, hints in _CNIG_FIELD_HINTS.items():
+            if snake == std or any(h in snake for h in hints):
+                std_name = std
+                break
+        mapping[col] = std_name or snake
+    return mapping
+
+
+_DEDUPE_PYTHON_CODE = (
+    "# Nettoyage — colonnes et lignes en double\n"
+    "work = gdf.loc[:, ~gdf.columns.duplicated()].copy()\n"
+    "return work.drop_duplicates()\n"
+)
+
+
+def build_mapping_choice_options(columns: List[str]) -> List[Dict[str, Any]]:
+    if not columns:
+        return []
+    preview = ", ".join(f"« {name} »" for name in columns[:5])
+    if len(columns) > 5:
+        preview = f"{preview} (+{len(columns) - 5})"
+    snake = _build_snake_case_mapping(columns)
+    cnig = _build_cnig_mapping(columns)
+    return [
+        {
+            "id": "snake_case",
+            "label": "Option A — Normaliser en snake_case",
+            "description": (
+                f"Renommer les colonnes ({preview}) en minuscules avec underscores "
+                "(ex. code_foyer, type_suppo)."
+            ),
+            "node_type": "attribute_mapper",
+            "config": {
+                "mapping": json.dumps(snake, ensure_ascii=False),
+                "keep_unmapped": True,
+            },
+        },
+        {
+            "id": "dedupe_essential",
+            "label": "Option B — Attributs essentiels et dédoublonnage",
+            "description": (
+                "Supprimer les colonnes dupliquées puis les lignes strictement identiques."
+            ),
+            "node_type": "python_caller",
+            "config": {"language": "python", "code": _DEDUPE_PYTHON_CODE},
+        },
+        {
+            "id": "cnig_covadis",
+            "label": "Option C — Modèle SIG (COVADIS / CNIG)",
+            "description": (
+                "Rapprocher les noms vers des champs standard SIG "
+                "(id, code_insee, nom, type, date_maj…)."
+            ),
+            "node_type": "attribute_mapper",
+            "config": {
+                "mapping": json.dumps(cnig, ensure_ascii=False),
+                "keep_unmapped": True,
+            },
+        },
+    ]
+
+
+def resolve_mapping_choice(
+    choice_id: str, columns: List[str]
+) -> Optional[Dict[str, Any]]:
+    for option in build_mapping_choice_options(columns):
+        if option.get("id") == choice_id:
+            return option
+    return None
+
+
+def mapping_step_summary(choice_id: str) -> str:
+    labels = {
+        "snake_case": "Mappage attributaire — normalisation snake_case",
+        "dedupe_essential": "Nettoyage — dédoublonnage colonnes et lignes",
+        "cnig_covadis": "Mappage attributaire — modèle COVADIS / CNIG",
+    }
+    return labels.get(choice_id, "Mappage attributaire")
+
+
 def _format_schema_thought(inspect: Dict[str, Any]) -> str:
     if not inspect.get("ok"):
         err = inspect.get("error") or "inspection impossible"
@@ -858,6 +1031,76 @@ def _composer_connect(
     return result
 
 
+def _composer_finish(
+    events: List[Dict[str, Any]],
+    created_ids: Dict[str, str],
+    source_id: str,
+) -> List[Dict[str, Any]]:
+    sequence = [
+        item.get("summary")
+        for item in events
+        if item.get("type") == "tool_call"
+        and item.get("name") in {"create_canvas_node", "connect_nodes"}
+    ]
+    events.append(
+        _event(
+            "done",
+            sequence=sequence,
+            created_ids=created_ids,
+            source_node_id=source_id,
+        )
+    )
+    return events
+
+
+def _emit_mapping_choice_pipeline(
+    events: List[Dict[str, Any]],
+    graph: Dict[str, Any],
+    *,
+    source_id: str,
+    origin: Dict[str, float],
+    choice: Dict[str, Any],
+    created_ids: Dict[str, str],
+) -> None:
+    node_type = str(choice.get("node_type") or "attribute_mapper")
+    config = dict(choice.get("config") or {})
+    y_offset = COMPOSER_BRANCH_OFFSET_Y if node_type == "python_caller" else 0.0
+    position = {
+        "x": origin["x"] + COMPOSER_STEP_OFFSET_X,
+        "y": origin["y"] + y_offset,
+    }
+    node = _composer_create_node(
+        events,
+        graph,
+        node_type,
+        position,
+        config,
+        f"create_node({node_type})",
+    )
+    created_ids[node_type] = node["id"]
+    _composer_connect(events, graph, source_id, node["id"])
+
+
+def _append_mapping_guidance_events(
+    events: List[Dict[str, Any]],
+    *,
+    prompt: str,
+    schema_columns: List[str],
+) -> None:
+    preview = ", ".join(f"« {name} »" for name in schema_columns[:6])
+    if len(schema_columns) > 6:
+        preview = f"{preview} (+{len(schema_columns) - 6})"
+    intro = (
+        f"Consigne « {prompt.strip()} » : précisez une stratégie de mappage. "
+        f"Colonnes @INPUT : {preview or '—'}.\n\n"
+        "Choisissez une option pour générer le nœud Attribute Mapper / Python "
+        "et l'insérer dans le DAG."
+    )
+    options = build_mapping_choice_options(schema_columns)
+    events.append(_event("thought", content=intro))
+    events.append(_event("mapping_choices", choices=options))
+
+
 def _export_chain_steps(
     writer_type: str,
     inspect: Dict[str, Any],
@@ -986,6 +1229,7 @@ def plan_composer(
     context_mentions: Optional[Iterable[str]] = None,
     source_node_id: Optional[str] = None,
     node_id: Optional[str] = None,
+    mapping_choice_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Produit la séquence SSE (thought / tool_call / code_diff)."""
     graph = current_graph or {"nodes": [], "edges": []}
@@ -1042,6 +1286,87 @@ def plan_composer(
     ]
     filter_spec = resolve_filter_spec(prompt, schema_columns)
     enriched_inspect = enrich_inspect_geometry_flags(inspect_result)
+
+    structured_intent = bool(
+        filter_spec
+        or writer_type
+        or (_wants_python(prompt) and filter_spec)
+        or (_wants_reproject(prompt) and re.search(r"epsg|cc\s*\d|lambert|wgs", prompt or "", re.I))
+    )
+
+    if mapping_choice_id:
+        choice = resolve_mapping_choice(mapping_choice_id, schema_columns)
+        created_ids: Dict[str, str] = {}
+        if not choice:
+            events.append(
+                _event(
+                    "error",
+                    content=f"Option de mappage inconnue : {mapping_choice_id}",
+                )
+            )
+            return _composer_finish(events, created_ids, source_id)
+        events.append(
+            _event(
+                "thought",
+                content=(
+                    f"Application de {choice.get('label') or mapping_choice_id} "
+                    f"— {choice.get('description') or ''}"
+                ),
+            )
+        )
+        _emit_mapping_choice_pipeline(
+            events,
+            graph,
+            source_id=source_id,
+            origin=origin,
+            choice=choice,
+            created_ids=created_ids,
+        )
+        return _composer_finish(events, created_ids, source_id)
+
+    if (
+        needs_mapping_guidance(prompt)
+        and not mapping_has_explicit_detail(prompt, schema_columns)
+        and not structured_intent
+    ):
+        _append_mapping_guidance_events(
+            events,
+            prompt=prompt,
+            schema_columns=schema_columns,
+        )
+        return _composer_finish(events, {}, source_id)
+
+    if (
+        needs_mapping_guidance(prompt)
+        and mapping_has_explicit_detail(prompt, schema_columns)
+        and not structured_intent
+    ):
+        default_id = (
+            "dedupe_essential"
+            if wants_data_cleaning_intent(prompt) and not wants_mapping_intent(prompt)
+            else "snake_case"
+        )
+        choice = resolve_mapping_choice(default_id, schema_columns)
+        created_ids = {}
+        if choice:
+            events.append(
+                _event(
+                    "thought",
+                    content=(
+                        f"Mappage ciblé détecté — application de "
+                        f"{choice.get('label') or default_id}."
+                    ),
+                )
+            )
+            _emit_mapping_choice_pipeline(
+                events,
+                graph,
+                source_id=source_id,
+                origin=origin,
+                choice=choice,
+                created_ids=created_ids,
+            )
+            return _composer_finish(events, created_ids, source_id)
 
     use_filter_writer = bool(filter_spec) and writer_type in {
         "gpkg_writer",
@@ -1357,20 +1682,7 @@ def plan_composer(
             step_kinds or ["export"],
         )
 
-    sequence = [
-        item.get("summary")
-        for item in events
-        if item.get("type") == "tool_call" and item.get("name") in {"create_canvas_node", "connect_nodes"}
-    ]
-    events.append(
-        _event(
-            "done",
-            sequence=sequence,
-            created_ids=created_ids,
-            source_node_id=source_id,
-        )
-    )
-    return events
+    return _composer_finish(events, created_ids, source_id)
 
 
 def extract_tool_sequence(events: List[Dict[str, Any]]) -> List[str]:
