@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { getNodeDoc } from "../../config/nodeDocs";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
-import { ComposerAgentPanel } from "../agent/ComposerAgentPanel";
+import { ComposerAgentInspector } from "../inspectors/ComposerAgentInspector";
 import { DirectAgentChatPanel } from "../agent/DirectAgentChatPanel";
 import { resolveInspector } from "./inspectorRegistry";
 import { AttributeManagerConfig } from "./AttributeManagerConfig";
@@ -385,7 +385,7 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 			) : tab === "parameters" && CustomInspector ? (
 				<CustomInspector nodeId={node.id} />
 			) : tab === "parameters" && node.data.nodeType === "composer_agent" ? (
-				<ComposerAgentPanel composerNodeId={node.id} />
+				<ComposerAgentInspector composerNodeId={node.id} />
 			) : tab === "parameters" && isDirectAgent ? (
 				<div className="config-form">
 					<p className="direct-agent-chat__hint">

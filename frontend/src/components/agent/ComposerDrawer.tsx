@@ -89,12 +89,12 @@ export function ComposerDrawer() {
 	const submitTargeted = useCallback(async () => {
 		const trimmed = targetedPrompt.trim();
 		if (!trimmed || isThinking) return;
-		await sendPrompt(
-			trimmed,
-			enrichedGraph,
-			anchorNodeId || undefined,
-			extractContextMentions(trimmed),
-		);
+		await sendPrompt(trimmed, enrichedGraph, {
+			selectedNodeId: anchorNodeId || undefined,
+			nodeId: anchorNodeId || undefined,
+			sourceNodeId,
+			contextMentions: extractContextMentions(trimmed),
+		});
 	}, [
 		anchorNodeId,
 		enrichedGraph,

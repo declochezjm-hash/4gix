@@ -7,16 +7,23 @@ import type {
 	StepArchitectPreviousStep,
 	StepArchitectResult,
 } from "../../lib/api";
-import { stepArchitectAgent } from "../../lib/api";
 import {
+	type ExecutionHealResult,
+	executionHealAgent,
+	stepArchitectAgent,
+} from "../../lib/api";
+import {
+	appendMaterializedProposals,
 	applyArchitectSequentialLayout,
+	ghostEdgeFromArchitectPayload,
 	ghostNodeFromArchitectPayload,
 	graphForStepArchitectRequest,
+	materializeComposerEdge,
 	resolveArchitectLayoutAnchorId,
 	resolveUpstreamDataSourceId,
 } from "../../lib/composerCanvas";
-import { useComposerAgentContext } from "../agent/ComposerAgentContext";
 import { useDagStore } from "../../store/dagStore";
+import { useComposerAgentContext } from "../agent/ComposerAgentContext";
 
 export type ArchitectChatMessage = {
 	role: "user" | "assistant" | "system";
@@ -68,7 +75,11 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 	const architectTotalSteps = useDagStore((s) => s.architectTotalSteps);
 	const architectPreviousSteps = useDagStore((s) => s.architectPreviousSteps);
 	const architectSourceNodeId = useDagStore((s) => s.architectSourceNodeId);
-	const architectGlobalObjective = useDagStore((s) => s.architectGlobalObjective);
+	const architectGlobalObjective = useDagStore(
+		(s) => s.architectGlobalObjective,
+	);
+	const lastExecution = useDagStore((s) => s.lastExecution);
+	const edgePathStyle = useDagStore((s) => s.edgePathStyle);
 
 	const { setProposedNodes, setProposedEdges, rejectAll, setAgentMode } =
 		useComposerAgentContext();
@@ -78,7 +89,9 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 		typeof node?.data.params?.global_objective === "string"
 			? node.data.params.global_objective
 			: "";
-	const chatHistory = parseArchitectChat(node?.data.params?.architect_chat_history);
+	const chatHistory = parseArchitectChat(
+		node?.data.params?.architect_chat_history,
+	);
 
 	const [autoAdvance, setAutoAdvance] = useState<boolean>(
 		node?.data.params?.auto_advance !== false,
@@ -89,7 +102,15 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 	const [thinkingOpen, setThinkingOpen] = useState(true);
 	const [thinkingLog, setThinkingLog] = useState<string[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
+	const [isGenerating, setIsGenerating] = useState(false);
 	const [inspectorError, setInspectorError] = useState<string | null>(null);
+	const [proactiveSuggestions, setProactiveSuggestions] = useState<string[]>(
+		[],
+	);
+	const [pendingHeal, setPendingHeal] = useState<ExecutionHealResult | null>(
+		null,
+	);
+	const lastHealExecutionIdRef = useRef<string | null>(null);
 	const inFlightRef = useRef(false);
 	const autoAdvanceRef = useRef(autoAdvance);
 	autoAdvanceRef.current = autoAdvance;
@@ -101,20 +122,19 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 	useEffect(() => {
 		if (node?.data.params?.auto_advance === undefined) return;
 		setAutoAdvance(node.data.params.auto_advance !== false);
-	}, [node?.data.params?.auto_advance, nodeId]);
+	}, [node?.data.params?.auto_advance]);
 
 	useEffect(() => {
 		setAgentMode("step");
 	}, [setAgentMode]);
 
 	const dataSourceId = useMemo(
-		() =>
-			resolveSourceNodeId(nodes, edges, nodeId, architectSourceNodeId),
+		() => resolveSourceNodeId(nodes, edges, nodeId, architectSourceNodeId),
 		[nodes, edges, nodeId, architectSourceNodeId],
 	);
 
 	const hasProposals = stepProposalNodes.length > 0;
-	const isGenerating = isLoading;
+	const generating = isGenerating || isLoading;
 	const globalPlan = architectGlobalPlan;
 	const totalSteps = architectTotalSteps || globalPlan.length;
 	const currentStepIndex = architectStepIndex;
@@ -125,12 +145,14 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 
 	const beginLoading = useCallback(() => {
 		setIsLoading(true);
+		setIsGenerating(true);
 		setInspectorError(null);
 		setArchitectGenerating(true);
 	}, [setArchitectGenerating]);
 
 	const endLoading = useCallback(() => {
 		setIsLoading(false);
+		setIsGenerating(false);
 		setArchitectGenerating(false);
 	}, [setArchitectGenerating]);
 
@@ -143,24 +165,149 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 		[setProposedEdges, setProposedNodes, setStepProposals],
 	);
 
-	const appendChat = (...messages: ArchitectChatMessage[]) => {
-		const current = useDagStore
-			.getState()
-			.nodes.find((item) => item.id === nodeId);
-		const hist = parseArchitectChat(
-			current?.data.params?.architect_chat_history,
+	const appendChat = useCallback(
+		(...messages: ArchitectChatMessage[]) => {
+			const current = useDagStore
+				.getState()
+				.nodes.find((item) => item.id === nodeId);
+			const hist = parseArchitectChat(
+				current?.data.params?.architect_chat_history,
+			);
+			updateNodeParams(nodeId, {
+				architect_chat_history: [...hist, ...messages],
+			});
+		},
+		[nodeId, updateNodeParams],
+	);
+
+	const applyHealFromResult = useCallback(
+		(heal: ExecutionHealResult) => {
+			if (!heal.proposed_node || !heal.proposed_edge) return;
+			const healNode = ghostNodeFromArchitectPayload(heal.proposed_node);
+			const healEdge = ghostEdgeFromArchitectPayload(heal.proposed_edge);
+			const failedId = heal.failed_node_id;
+			const parentSource = String(
+				(heal.proposed_edge as { source?: string }).source ?? "",
+			);
+			const state = useDagStore.getState();
+			const filteredEdges = state.edges.filter(
+				(edge) =>
+					!(
+						failedId &&
+						edge.target === failedId &&
+						edge.source === parentSource
+					),
+			);
+			const proposalEdges = [healEdge];
+			if (failedId) {
+				proposalEdges.push(
+					materializeComposerEdge(
+						{
+							id: `heal-follow-${healNode.id}-${failedId}`,
+							source: healNode.id,
+							target: failedId,
+							sourceHandle: "output",
+							targetHandle: "input",
+						},
+						edgePathStyle,
+					),
+				);
+			}
+			const merged = appendMaterializedProposals(
+				state.nodes,
+				filteredEdges,
+				edgePathStyle,
+				[healNode],
+				proposalEdges,
+			);
+			useDagStore.setState({ nodes: merged.nodes, edges: merged.edges });
+			appendChat({
+				role: "assistant",
+				content:
+					"Correctif appliqué sur le canvas — relancez l'exécution du workflow.",
+				at: new Date().toISOString(),
+			});
+			setPendingHeal(null);
+			pushThinking("Correctif géométrie matérialisé sur le canvas.");
+		},
+		[appendChat, edgePathStyle, pushThinking],
+	);
+
+	const applyHealCorrective = useCallback(() => {
+		if (pendingHeal) applyHealFromResult(pendingHeal);
+	}, [applyHealFromResult, pendingHeal]);
+
+	useEffect(() => {
+		if (
+			!lastExecution ||
+			String(lastExecution.status).toUpperCase() !== "FAILED"
+		) {
+			return;
+		}
+		if (lastHealExecutionIdRef.current === lastExecution.execution_id) return;
+		const failedSnap = (lastExecution.snapshots || []).find(
+			(snap) =>
+				String(snap.status).toUpperCase() === "FAILED" ||
+				snap.status === "error",
 		);
-		updateNodeParams(nodeId, {
-			architect_chat_history: [...hist, ...messages],
-		});
-	};
+		const errText =
+			failedSnap?.error ||
+			lastExecution.error ||
+			"Échec d'exécution sans détail.";
+		const failedNodeId = failedSnap?.node_id;
+		if (!failedNodeId || !dataSourceId) return;
+
+		lastHealExecutionIdRef.current = lastExecution.execution_id;
+		const objective = architectGlobalObjective || promptText.trim();
+		const state = useDagStore.getState();
+		void executionHealAgent({
+			error_message: errText,
+			failed_node_id: failedNodeId,
+			global_objective: objective,
+			source_node_id: dataSourceId,
+			current_graph: graphForStepArchitectRequest(
+				state.nodes,
+				state.edges,
+				state.snapshots,
+				[],
+				[],
+			),
+		})
+			.then((heal) => {
+				if (!heal.ok) return;
+				setPendingHeal(heal);
+				appendChat({
+					role: "assistant",
+					content: `${heal.explanation || "Erreur détectée."}\n\nCorrectif proposé : insertion d'un nœud de création de géométrie ou bascule CSV.`,
+					at: new Date().toISOString(),
+				});
+				pushThinking(
+					heal.explanation || "Auto-healing : correctif disponible.",
+				);
+				const autoHeal = node?.data.params?.auto_heal !== false;
+				if (autoHeal && heal.proposed_node && heal.proposed_edge) {
+					applyHealFromResult(heal);
+				}
+			})
+			.catch(() => {
+				/* ignore — pas de correctif applicable */
+			});
+	}, [
+		lastExecution,
+		dataSourceId,
+		architectGlobalObjective,
+		promptText,
+		node?.data.params?.auto_heal,
+		appendChat,
+		pushThinking,
+		applyHealFromResult,
+	]);
 
 	const reportError = useCallback(
 		(message: string) => {
 			setInspectorError(message);
 			pushThinking(message);
 			useDagStore.setState({ error: message });
-			console.error("Erreur Step Architect:", message);
 		},
 		[pushThinking],
 	);
@@ -225,20 +372,38 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				const rawNode = ghostNodeFromArchitectPayload(
 					result.proposed_node as Record<string, unknown>,
 				);
-				const layoutAnchorId = resolveArchitectLayoutAnchorId(
-					[...state.nodes, ...ghostNodesAcc],
-					lastNodeId,
+				const dataParentId = String(
+					(result.proposed_edge as { source?: string } | undefined)?.source ||
+						dataSourceId,
 				);
+				const attachToSource = Boolean(result.attach_to_source);
+				const chainLayoutAnchor =
+					typeof result.layout_anchor_node_id === "string" &&
+					result.layout_anchor_node_id.trim()
+						? result.layout_anchor_node_id.trim()
+						: dataParentId;
+				const layoutAnchorId = attachToSource
+					? resolveArchitectLayoutAnchorId(
+							[...state.nodes, ...ghostNodesAcc],
+							nodeId,
+						)
+					: chainLayoutAnchor;
 				const laid = applyArchitectSequentialLayout(
 					[...state.nodes, ...ghostNodesAcc],
 					[...state.edges, ...ghostEdgesAcc],
 					layoutAnchorId,
 					rawNode,
 					ghostEdgesAcc,
+					{
+						dataParentId,
+						branchIndex: attachToSource ? (result.branch_index ?? 0) : 0,
+					},
 				);
 				ghostNodesAcc.push(laid.node);
 				if (laid.edge) ghostEdgesAcc.push(laid.edge);
-				lastNodeId = laid.node.id;
+				if (!attachToSource) {
+					lastNodeId = laid.node.id;
+				}
 
 				previousSteps = [
 					...previousSteps,
@@ -249,6 +414,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 							result.step_summary ||
 							result.global_plan?.[stepIndex] ||
 							`Étape ${stepIndex + 1}`,
+						branch_id: result.branch_id,
 					},
 				];
 				stepIndex += 1;
@@ -336,8 +502,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 							{
 								index: stepIndex,
 								node_id: materializedId,
-								step_summary:
-									globalPlan[stepIndex] || `Étape ${stepIndex + 1}`,
+								step_summary: globalPlan[stepIndex] || `Étape ${stepIndex + 1}`,
 							},
 						];
 						stepIndex += 1;
@@ -369,6 +534,8 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			} finally {
 				if (ownsLoading) {
 					inFlightRef.current = false;
+					setIsGenerating(false);
+					setIsLoading(false);
 					endLoading();
 				}
 			}
@@ -378,7 +545,6 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			architectPreviousSteps,
 			architectSourceNodeId,
 			architectStepIndex,
-			architectTotalSteps,
 			appendStepProposals,
 			beginLoading,
 			discardStoreProposals,
@@ -417,7 +583,10 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 		beginLoading();
 		setThinkingLog([]);
 		pushThinking("Analyse de l'objectif et appel step-architect…");
-		updateNodeParams(nodeId, { global_objective: trimmed, source_node_id: sourceId });
+		updateNodeParams(nodeId, {
+			global_objective: trimmed,
+			source_node_id: sourceId,
+		});
 		updateNodeParams(nodeId, { auto_advance: autoAdvanceEnabled });
 		appendChat({
 			role: "user",
@@ -448,13 +617,32 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			);
 
 			const planText = (firstResult?.global_plan || []).join(" → ");
+			const suggestions = firstResult?.proactive_suggestions ?? [];
+			const notices = firstResult?.geometry_notices ?? [];
+			setProactiveSuggestions(suggestions);
 			appendChat({
 				role: "assistant",
 				content: planText ? `Plan : ${planText}` : "Plan généré.",
 				at: new Date().toISOString(),
 			});
+			if (notices.length) {
+				appendChat({
+					role: "assistant",
+					content: notices.join(" "),
+					at: new Date().toISOString(),
+				});
+			}
+			if (suggestions.length) {
+				appendChat({
+					role: "assistant",
+					content: `Suggestions :\n${suggestions.map((item) => `• ${item}`).join("\n")}`,
+					at: new Date().toISOString(),
+				});
+			}
 			pushThinking(
-				planText ? `Plan : ${planText}` : "Plan prêt — prévisualisation étape 1.",
+				planText
+					? `Plan : ${planText}`
+					: "Plan prêt — prévisualisation étape 1.",
 			);
 
 			if (autoAdvanceEnabled && stepIndex > 0) {
@@ -469,6 +657,8 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			reportError(errorMessage(err));
 		} finally {
 			inFlightRef.current = false;
+			setIsGenerating(false);
+			setIsLoading(false);
 			endLoading();
 		}
 	};
@@ -499,9 +689,9 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 							Décrivez l&apos;objectif global du pipeline à construire.
 						</li>
 					) : (
-						chatHistory.map((message, index) => (
+						chatHistory.map((message) => (
 							<li
-								key={`${message.at}-${index}`}
+								key={`${message.at}-${message.role}-${message.content.slice(0, 48)}`}
 								className={`auto-architect-inspector__bubble auto-architect-inspector__bubble--${message.role}`}
 							>
 								{message.content}
@@ -515,7 +705,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 						rows={4}
 						placeholder="Reprojection EPSG:2154, filtrage des parcelles > 1000 m² et export GeoJSON"
 						value={promptText}
-						disabled={isGenerating}
+						disabled={generating}
 						onChange={(e) => setPromptText(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -529,7 +719,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 					<input
 						type="checkbox"
 						checked={autoAdvance}
-						disabled={isGenerating}
+						disabled={generating}
 						onChange={(e) => {
 							const next = e.target.checked;
 							setAutoAdvance(next);
@@ -538,10 +728,39 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 					/>
 					Avancement automatique (Auto-advance)
 				</label>
+				<label className="auto-architect-inspector__toggle">
+					<input
+						type="checkbox"
+						checked={node?.data.params?.auto_heal !== false}
+						disabled={generating}
+						onChange={(e) => {
+							updateNodeParams(nodeId, { auto_heal: e.target.checked });
+						}}
+					/>
+					Auto-correction après échec (géométrie / CRS)
+				</label>
+				{proactiveSuggestions.length > 0 ? (
+					<ul className="auto-architect-inspector__suggestions">
+						{proactiveSuggestions.map((item) => (
+							<li key={item}>{item}</li>
+						))}
+					</ul>
+				) : null}
+				{pendingHeal?.ok ? (
+					<button
+						type="button"
+						className="composer-agent-panel__accept"
+						disabled={generating}
+						onClick={() => applyHealCorrective()}
+					>
+						Appliquer le correctif
+					</button>
+				) : null}
 				{!dataSourceId ? (
 					<p className="auto-architect-inspector__warn">
-						Aucune source détectée : reliez la sortie d’un reader (CSV, Shapefile…)
-						à l’entrée de ce nœud, ou ajoutez au moins un reader sur le canvas.
+						Aucune source détectée : reliez la sortie d’un reader (CSV,
+						Shapefile…) à l’entrée de ce nœud, ou ajoutez au moins un reader sur
+						le canvas.
 					</p>
 				) : (
 					<p className="auto-architect-inspector__source-hint">
@@ -556,10 +775,10 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				<button
 					type="button"
 					className="auto-architect-inspector__send"
-					disabled={isGenerating || !promptText.trim()}
+					disabled={generating || !promptText.trim()}
 					onClick={() => void handleGenerate()}
 				>
-					{isGenerating ? (
+					{generating ? (
 						<>
 							<Loader2 size={16} className="n8n-node--direct-agent__spin" />
 							Génération…
@@ -582,12 +801,10 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			{thinkingOpen ? (
 				<ul className="composer-agent-panel__thoughts">
 					{thinkingLog.length ? (
-						thinkingLog.map((line, index) => (
-							<li key={`${index}-${line}`}>{line}</li>
-						))
+						thinkingLog.map((line) => <li key={line}>{line}</li>)
 					) : (
 						<li className="composer-agent-panel__muted">
-							{isGenerating
+							{generating
 								? "Planification step-architect…"
 								: "Les logs apparaîtront après l'envoi."}
 						</li>
@@ -626,7 +843,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				<button
 					type="button"
 					className="composer-agent-panel__accept"
-					disabled={isGenerating || !canApplyPipeline}
+					disabled={generating || !canApplyPipeline}
 					onClick={() => void handleApplyAll()}
 					title="Matérialise toutes les étapes du plan"
 				>
@@ -635,7 +852,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				<button
 					type="button"
 					className="composer-agent-panel__reject"
-					disabled={isGenerating}
+					disabled={generating}
 					onClick={handleReject}
 				>
 					Rejeter / Annuler

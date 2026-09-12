@@ -209,14 +209,29 @@ function normalizeComposerEvent(
 	return null;
 }
 
+export type ComposerSendOptions = {
+	selectedNodeId?: string;
+	nodeId?: string;
+	sourceNodeId?: string | null;
+	contextMentions?: string[];
+};
+
 export function useComposerAgent() {
 	const [isThinking, setIsThinking] = useState(false);
+	const [isLoading, setIsLoading] = useState(false);
+	const [isGenerating, setIsGenerating] = useState(false);
 	const [thoughts, setThoughts] = useState<string[]>([]);
 	const [messages, setMessages] = useState<ComposerMessage[]>([]);
 	const [proposedNodes, setProposedNodes] = useState<Node<FlowNodeData>[]>([]);
 	const [proposedEdges, setProposedEdges] = useState<Edge[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
+
+	const setComposerBusy = useCallback((busy: boolean) => {
+		setIsThinking(busy);
+		setIsLoading(busy);
+		setIsGenerating(busy);
+	}, []);
 
 	const discardProposals = useCallback(() => {
 		setProposedNodes([]);
@@ -227,8 +242,7 @@ export function useComposerAgent() {
 		async (
 			prompt: string,
 			currentGraph: ComposerGraph,
-			selectedNodeId?: string,
-			contextMentions: string[] = [],
+			options: ComposerSendOptions = {},
 		) => {
 			const trimmed = prompt.trim();
 			if (!trimmed) return;
@@ -237,14 +251,16 @@ export function useComposerAgent() {
 			const controller = new AbortController();
 			abortRef.current = controller;
 
-			setIsThinking(true);
-			setThoughts([]);
+			setComposerBusy(true);
+			setThoughts(["Chargement / Analyse…"]);
 			setMessages([]);
 			setProposedNodes([]);
 			setProposedEdges([]);
 			setError(null);
 
 			const payload = graphForComposerAgent(currentGraph);
+			const nodeId = options.nodeId ?? options.selectedNodeId ?? null;
+			const selectedNodeId = options.selectedNodeId ?? options.nodeId ?? null;
 
 			try {
 				const response = await fetch(composerAgentUrl(), {
@@ -252,9 +268,11 @@ export function useComposerAgent() {
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						prompt: trimmed,
+						node_id: nodeId,
+						source_node_id: options.sourceNodeId ?? null,
+						selected_node_id: selectedNodeId,
 						current_graph: payload,
-						selected_node_id: selectedNodeId ?? null,
-						context_mentions: contextMentions,
+						context_mentions: options.contextMentions ?? [],
 					}),
 					signal: controller.signal,
 				});
@@ -295,29 +313,32 @@ export function useComposerAgent() {
 							}
 						} else if (event.type === "error") {
 							setError(event.content ?? "Erreur Composer.");
-							setIsThinking(false);
 						} else if (event.type === "done") {
-							setIsThinking(false);
+							/* fin gérée dans finally */
 						}
 					});
 				}
 			} catch (err) {
-				if (controller.signal.aborted) return;
-				setError(
-					err instanceof Error ? err.message : "Échec de l’agent Composer.",
-				);
+				if (!controller.signal.aborted) {
+					setError(
+						err instanceof Error ? err.message : "Échec de l’agent Composer.",
+					);
+				}
 			} finally {
 				if (abortRef.current === controller) abortRef.current = null;
-				setIsThinking((thinking) => (thinking ? false : thinking));
+				setComposerBusy(false);
 			}
 		},
-		[],
+		[setComposerBusy],
 	);
 
 	return {
 		sendPrompt,
 		discardProposals,
 		isThinking,
+		isLoading,
+		isGenerating,
+		setComposerBusy,
 		thoughts,
 		messages,
 		proposedNodes,

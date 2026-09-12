@@ -317,7 +317,21 @@ def inspect_input_schema(
             except KeyError:
                 geometry = None
 
-    return {
+    has_geometry = bool(geom_types)
+    if not has_geometry and isinstance(features, list):
+        for feat in features[:50]:
+            if not isinstance(feat, dict):
+                continue
+            geom = feat.get("geometry")
+            if isinstance(geom, dict) and geom.get("type"):
+                has_geometry = True
+                break
+
+    from app.core.readers.tabular import find_xy_columns
+
+    column_names = [str(f["name"]) for f in fields if f.get("name")]
+    coord_pair = find_xy_columns(column_names)
+    payload = {
         "ok": True,
         "node_id": node_id,
         "node_type": ntype,
@@ -326,11 +340,15 @@ def inspect_input_schema(
         "field_count": len(fields),
         "geometry": geometry,
         "geometry_types": sorted(set(geom_types)),
+        "has_geometry": has_geometry,
         "crs": crs,
         "params": data.get("params") or {},
         "schema_title": schema.get("title"),
         "feature_count": len(features) if isinstance(features, list) else None,
     }
+    if coord_pair:
+        payload["coordinate_columns"] = [coord_pair[0], coord_pair[1]]
+    return payload
 
 
 def create_canvas_node(

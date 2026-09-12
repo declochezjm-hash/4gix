@@ -1637,6 +1637,60 @@ body {
 	font-size: 0.72rem;
 	color: var(--muted);
 }
+.attribute-table__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 0.75rem;
+	margin-top: 0.45rem;
+}
+.attribute-table__summary {
+	margin: 0;
+	flex: 1 1 220px;
+}
+.attribute-table__pagination {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem 0.5rem;
+}
+.attribute-table__page-btn {
+	padding: 0.3rem 0.55rem;
+	border-radius: 6px;
+	border: 1px solid var(--line);
+	background: var(--bg-elev);
+	color: var(--ink);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.72rem;
+}
+.attribute-table__page-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.attribute-table__page-indicator {
+	font-size: 0.72rem;
+	color: var(--muted);
+	min-width: 4.5rem;
+	text-align: center;
+}
+.attribute-table__page-size {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.72rem;
+	color: var(--muted);
+}
+.attribute-table__page-size select {
+	background: var(--bg-elev);
+	border: 1px solid var(--line);
+	color: var(--ink);
+	border-radius: 6px;
+	padding: 0.28rem 0.4rem;
+	font: inherit;
+	font-size: 0.72rem;
+}
 .table-wrap table {
 	width: 100%;
 	border-collapse: collapse;

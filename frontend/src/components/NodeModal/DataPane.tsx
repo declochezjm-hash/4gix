@@ -79,6 +79,8 @@ export function DataPane({
 	const completed =
 		executionStatus === "COMPLETED" || executionStatus === "success";
 
+	const entityTotal = table.total || table.rows.length;
+
 	useEffect(() => {
 		setSelectedIndex(null);
 		setFilter("");
@@ -227,7 +229,7 @@ export function DataPane({
 						</div>
 						<div>
 							<dt>Entités</dt>
-							<dd>{geojson?.features.length ?? table.rows.length}</dd>
+							<dd>{entityTotal}</dd>
 						</div>
 					</dl>
 					{hasGeometry ? (
@@ -252,19 +254,23 @@ export function DataPane({
 					<AttributeTable
 						columns={table.columns}
 						rows={filteredRows}
-						totalRows={table.rows.length}
+						totalEntities={entityTotal}
 						selectedIndex={selectedIndex}
 						onSelectRow={setSelectedIndex}
+						filteredCount={filteredRows.length}
+						hasActiveFilter={Boolean(filter.trim())}
+						resetKey={`${dataKey ?? ""}:${filter}:${filteredRows.length}`}
 					/>
 				</div>
 			) : table.rows.length ? (
 				<AttributeTable
 					columns={table.columns}
 					rows={filteredRows}
-					totalRows={table.rows.length}
+					totalEntities={entityTotal}
 					selectedIndex={selectedIndex}
 					onSelectRow={setSelectedIndex}
 					filteredCount={filteredRows.length}
+					resetKey={`${dataKey ?? ""}:${filter}:${filteredRows.length}`}
 				/>
 			) : (
 				<pre>{JSON.stringify(stripBase64(data), null, 2)}</pre>
@@ -276,32 +282,108 @@ export function DataPane({
 type AttributeTableProps = {
 	columns: string[];
 	rows: { row: Record<string, unknown>; index: number }[];
-	totalRows: number;
+	totalEntities: number;
 	selectedIndex: number | null;
 	onSelectRow: (index: number) => void;
 	filteredCount?: number;
+	hasActiveFilter?: boolean;
+	resetKey?: string;
 };
+
+const PAGE_SIZE_OPTIONS = [50, 200, 1000] as const;
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | "all";
+
+function isFilteredList(hasActiveFilter: boolean): boolean {
+	return hasActiveFilter;
+}
 
 function AttributeTable({
 	columns,
 	rows,
-	totalRows,
+	totalEntities,
 	selectedIndex,
 	onSelectRow,
 	filteredCount,
+	resetKey = "",
+	hasActiveFilter = false,
 }: AttributeTableProps) {
+	const [pageSize, setPageSize] = useState<PageSizeOption>(50);
+	const [currentPage, setCurrentPage] = useState(0);
+
+	const listTotal = filteredCount ?? rows.length;
+
+	useEffect(() => {
+		setCurrentPage(0);
+	}, [resetKey, pageSize]);
+
 	if (!rows.length) {
 		return <div className="empty">Aucune entité à inspecter.</div>;
 	}
-	const shown = filteredCount ?? rows.length;
+
+	const effectivePageSize =
+		pageSize === "all" ? Math.max(1, rows.length) : pageSize;
+	const totalPages = Math.max(1, Math.ceil(rows.length / effectivePageSize));
+	const safePage = Math.min(currentPage, totalPages - 1);
+	const sliceStart = safePage * effectivePageSize;
+	const pageRows = rows.slice(sliceStart, sliceStart + effectivePageSize);
+	const rangeStart = rows.length ? sliceStart + 1 : 0;
+	const rangeEnd = sliceStart + pageRows.length;
+	const isFiltered = isFilteredList(hasActiveFilter);
+	const displayTotal = isFiltered ? listTotal : totalEntities;
+
 	return (
 		<>
-			<p className="table-meta">
-				{shown === totalRows
-					? `${totalRows} ligne${totalRows > 1 ? "s" : ""}`
-					: `${shown} / ${totalRows} lignes`}
-				{` · ${columns.length} colonne${columns.length > 1 ? "s" : ""}`}
-			</p>
+			<div className="attribute-table__toolbar">
+				<p className="table-meta attribute-table__summary">
+					Affichage de {rangeStart} à {rangeEnd} sur {displayTotal} entité
+					{displayTotal > 1 ? "s" : ""}
+					{isFiltered ? ` (filtre actif · ${totalEntities} au total)` : ""}
+					{` · ${columns.length} colonne${columns.length > 1 ? "s" : ""}`}
+				</p>
+				<div className="attribute-table__pagination">
+					<button
+						type="button"
+						className="attribute-table__page-btn"
+						disabled={safePage <= 0}
+						onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
+					>
+						Précédent
+					</button>
+					<span className="attribute-table__page-indicator">
+						Page {safePage + 1} / {totalPages}
+					</span>
+					<button
+						type="button"
+						className="attribute-table__page-btn"
+						disabled={safePage >= totalPages - 1}
+						onClick={() =>
+							setCurrentPage((page) => Math.min(totalPages - 1, page + 1))
+						}
+					>
+						Suivant
+					</button>
+					<label className="attribute-table__page-size">
+						<span>Lignes</span>
+						<select
+							value={pageSize === "all" ? "all" : String(pageSize)}
+							onChange={(event) => {
+								const value = event.target.value;
+								setPageSize(
+									value === "all" ? "all" : (Number(value) as PageSizeOption),
+								);
+							}}
+							aria-label="Taille de page"
+						>
+							{PAGE_SIZE_OPTIONS.map((size) => (
+								<option key={size} value={size}>
+									{size}
+								</option>
+							))}
+							<option value="all">Tout</option>
+						</select>
+					</label>
+				</div>
+			</div>
 			<div className="table-wrap table-wrap--tall">
 				<table>
 					<thead>
@@ -312,7 +394,7 @@ function AttributeTable({
 						</tr>
 					</thead>
 					<tbody>
-						{rows.map(({ row, index }) => (
+						{pageRows.map(({ row, index }) => (
 							<tr
 								key={index}
 								className={selectedIndex === index ? "is-selected-feature" : ""}

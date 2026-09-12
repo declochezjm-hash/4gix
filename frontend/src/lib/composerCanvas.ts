@@ -281,7 +281,7 @@ function asFlowNodeData(raw: Record<string, unknown>): FlowNodeData {
 }
 
 export const ARCHITECT_STEP_OFFSET_X = 300;
-export const ARCHITECT_BRANCH_OFFSET_Y = 40;
+export const ARCHITECT_BRANCH_OFFSET_Y = 150;
 
 export function isAutoArchitectNode(
 	node?: Node<FlowNodeData>,
@@ -343,7 +343,7 @@ export function createArchitectGhostEdge(
 export function layoutArchitectNodePosition(
 	nodes: Node<FlowNodeData>[],
 	layoutAnchorNodeId: string,
-	_branchIndex = 0,
+	branchIndex = 0,
 ): { x: number; y: number } {
 	const anchorId = resolveArchitectLayoutAnchorId(nodes, layoutAnchorNodeId);
 	const anchor = nodes.find((node) => node.id === anchorId);
@@ -351,30 +351,46 @@ export function layoutArchitectNodePosition(
 	const lastY = anchor?.position.y ?? 100;
 	return {
 		x: lastX + ARCHITECT_STEP_OFFSET_X,
-		y: lastY,
+		y: lastY + ARCHITECT_BRANCH_OFFSET_Y * Math.max(0, branchIndex),
 	};
 }
 
-/** Position + arête imposées côté UI : ligne horizontale depuis l'Auto-Architect. */
+/** Position visuelle depuis l'ancre ; arête métier depuis le parent de données. */
 export function applyArchitectSequentialLayout(
 	nodes: Node<FlowNodeData>[],
 	edges: Edge[],
 	layoutAnchorNodeId: string,
 	proposedNode: Node<FlowNodeData>,
 	extraEdges: Edge[] = [],
+	options?: {
+		dataParentId?: string | null;
+		branchIndex?: number;
+	},
 ): { node: Node<FlowNodeData>; edge: Edge | null } {
 	const canvasNodes = nodes;
 	const allEdges = [...edges, ...extraEdges];
-	const anchorId = resolveArchitectLayoutAnchorId(
+	const visualAnchorId = resolveArchitectLayoutAnchorId(
 		canvasNodes,
 		layoutAnchorNodeId,
 	);
-	const position = layoutArchitectNodePosition(canvasNodes, anchorId, 0);
+	const branchIndex = options?.branchIndex ?? 0;
+	const position = layoutArchitectNodePosition(
+		canvasNodes,
+		visualAnchorId,
+		branchIndex,
+	);
 	const node: Node<FlowNodeData> = {
 		...proposedNode,
 		position,
 	};
-	const edge = createArchitectGhostEdge(anchorId, node.id, allEdges);
+	const requestedParent = options?.dataParentId?.trim() || visualAnchorId;
+	const parentNode = canvasNodes.find((item) => item.id === requestedParent);
+	const dataParentId =
+		parentNode && isAutoArchitectNode(parentNode)
+			? resolveUpstreamDataSourceId(canvasNodes, allEdges, requestedParent) ||
+				requestedParent
+			: requestedParent;
+	const edge = createArchitectGhostEdge(dataParentId, node.id, allEdges);
 	return { node, edge };
 }
 
@@ -429,9 +445,19 @@ export function appendMaterializedProposals(
 	proposedEdges: Edge[],
 ): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
 	const nextNodes = proposedNodes.map((node) => materializeComposerNode(node));
-	const nextEdges = proposedEdges.map((edge) =>
-		materializeComposerEdge(edge, pathStyle),
-	);
+	const knownIds = new Set([...nodes, ...nextNodes].map((node) => node.id));
+	const nextEdges = proposedEdges
+		.filter((edge) => knownIds.has(edge.source) && knownIds.has(edge.target))
+		.map((edge) =>
+			materializeComposerEdge(
+				{
+					...edge,
+					sourceHandle: edge.sourceHandle ?? "output",
+					targetHandle: edge.targetHandle ?? "input",
+				},
+				pathStyle,
+			),
+		);
 	return {
 		nodes: [...nodes, ...nextNodes],
 		edges: normalizeCanvasEdges([...edges, ...nextEdges], pathStyle),

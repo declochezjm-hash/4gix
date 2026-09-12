@@ -201,6 +201,11 @@ def build_snapshot_from_payload(
         from app.nodes.workflow_features import port_previews
 
         previews = port_previews(payload)
+        ports = payload.get("ports") if isinstance(payload.get("ports"), dict) else {}
+        full_ports: Dict[str, Any] = {}
+        for name, value in ports.items():
+            port_fc = _as_feature_collection(value)
+            full_ports[name] = port_fc if port_fc else value
         metadata.setdefault("multi_port", True)
         primary = previews.get("output") or (fc and _preview_limit(fc))
         return NodeSnapshot(
@@ -210,7 +215,7 @@ def build_snapshot_from_payload(
             duration_ms=duration_ms,
             metadata=metadata,
             preview=primary,
-            output_snapshot={"ports": previews, "data": payload.get("data")},
+            output_snapshot={"ports": full_ports, "data": payload.get("data")},
         ).to_dict()
 
     if fc is not None:
@@ -236,9 +241,16 @@ def build_snapshot_from_payload(
                 output_snapshot["bbox"] = bbox
                 metadata.setdefault("bbox", bbox)
     else:
-        output_snapshot = extract_json_preview(
-            payload.get("data") if isinstance(payload, dict) else payload
-        )
+        raw_data = payload.get("data") if isinstance(payload, dict) else payload
+        if isinstance(raw_data, list):
+            output_snapshot = {
+                "records": raw_data,
+                "total": len(raw_data),
+            }
+        elif isinstance(raw_data, dict) and isinstance(raw_data.get("records"), list):
+            output_snapshot = raw_data
+        else:
+            output_snapshot = extract_json_preview(raw_data)
     return NodeSnapshot(
         node_id=node_id,
         node_type=node_type,

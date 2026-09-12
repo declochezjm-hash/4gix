@@ -9,6 +9,7 @@ import {
 import { graphForComposerAgent } from "../../hooks/useComposerAgent";
 import {
 	extractContextMentions,
+	resolveUpstreamDataSourceId,
 	toolCallBadgeLabel,
 } from "../../lib/composerCanvas";
 import { useDagStore } from "../../store/dagStore";
@@ -36,6 +37,8 @@ export function ComposerAgentPanel({
 }) {
 	const {
 		isThinking,
+		isLoading,
+		isGenerating,
 		thoughts,
 		messages,
 		proposedNodes,
@@ -45,7 +48,10 @@ export function ComposerAgentPanel({
 		acceptAll,
 		rejectAll,
 		hasProposals,
+		setComposerBusy,
 	} = useComposerAgentContext();
+
+	const composerBusy = isGenerating || isLoading;
 
 	const nodes = useDagStore((s) => s.nodes);
 	const edges = useDagStore((s) => s.edges);
@@ -61,15 +67,20 @@ export function ComposerAgentPanel({
 			? composerNode.data.params.prompt
 			: "";
 
-	const [prompt, setPrompt] = useState(storedPrompt);
+	const [promptText, setPromptText] = useState(storedPrompt);
 	const [thoughtsOpen, setThoughtsOpen] = useState(true);
 	const [mentionQuery, setMentionQuery] = useState<string | null>(null);
 	const [mentionIndex, setMentionIndex] = useState(0);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
 	useEffect(() => {
-		setPrompt(storedPrompt);
+		setPromptText(storedPrompt);
 	}, [storedPrompt]);
+
+	const sourceNodeId = useMemo(
+		() => resolveUpstreamDataSourceId(nodes, edges, composerNodeId),
+		[nodes, edges, composerNodeId],
+	);
 
 	const mentionOptions = useMemo((): MentionOption[] => {
 		const base: MentionOption[] = [
@@ -116,13 +127,13 @@ export function ComposerAgentPanel({
 	const insertMention = (token: string) => {
 		const field = textareaRef.current;
 		if (!field) return;
-		const cursor = field.selectionStart ?? prompt.length;
-		const before = prompt.slice(0, cursor);
-		const after = prompt.slice(cursor);
+		const cursor = field.selectionStart ?? promptText.length;
+		const before = promptText.slice(0, cursor);
+		const after = promptText.slice(cursor);
 		const at = before.lastIndexOf("@");
 		if (at < 0) return;
 		const next = `${before.slice(0, at)}${token} ${after}`;
-		setPrompt(next);
+		setPromptText(next);
 		persistPrompt(next);
 		setMentionQuery(null);
 		const pos = at + token.length + 1;
@@ -132,9 +143,9 @@ export function ComposerAgentPanel({
 		});
 	};
 
-	const submitPrompt = async () => {
-		const trimmed = prompt.trim();
-		if (!trimmed || isThinking) return;
+	const handleSend = async () => {
+		const trimmed = promptText.trim();
+		if (!trimmed || composerBusy) return;
 		persistPrompt(trimmed);
 		const enriched = graphForComposerAgent({
 			nodes: nodes.map((node) => {
@@ -151,12 +162,18 @@ export function ComposerAgentPanel({
 			}),
 			edges,
 		});
-		await sendPrompt(
-			trimmed,
-			enriched,
-			composerNodeId,
-			extractContextMentions(trimmed),
-		);
+		try {
+			await sendPrompt(trimmed, enriched, {
+				nodeId: composerNodeId,
+				selectedNodeId: composerNodeId,
+				sourceNodeId,
+				contextMentions: extractContextMentions(trimmed),
+			});
+		} catch (err) {
+			console.error("ComposerAgent handleSend:", err);
+		} finally {
+			setComposerBusy(false);
+		}
 	};
 
 	const onPromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -181,7 +198,7 @@ export function ComposerAgentPanel({
 		}
 		if (event.key === "Enter" && !event.shiftKey) {
 			event.preventDefault();
-			void submitPrompt();
+			void handleSend();
 		}
 	};
 
@@ -234,7 +251,7 @@ export function ComposerAgentPanel({
 				onClick={() => setThoughtsOpen((value) => !value)}
 				aria-expanded={thoughtsOpen}
 			>
-				<span>{isThinking ? "Thinking…" : "Thinking process"}</span>
+				<span>{composerBusy || isThinking ? "Thinking…" : "Thinking process"}</span>
 				<span>{thoughtsOpen ? "▾" : "▸"}</span>
 			</button>
 			{thoughtsOpen ? (
@@ -243,8 +260,8 @@ export function ComposerAgentPanel({
 						thoughts.map((thought) => <li key={thought}>{thought}</li>)
 					) : (
 						<li className="composer-agent-panel__muted">
-							{isThinking
-								? "Analyse du workflow en cours…"
+							{composerBusy || isThinking
+								? "Chargement / Analyse…"
 								: "Les réflexions de l’agent apparaîtront ici."}
 						</li>
 					)}
@@ -310,15 +327,15 @@ export function ComposerAgentPanel({
 				className="composer-agent-panel__prompt"
 				rows={4}
 				placeholder="Décrivez la transformation… (@Schema, @Input)"
-				value={prompt}
+				value={promptText}
 				onChange={(event) => {
-					setPrompt(event.target.value);
+					setPromptText(event.target.value);
 					syncMentionMenu(
 						event.target.value,
 						event.target.selectionStart ?? event.target.value.length,
 					);
 				}}
-				onBlur={() => persistPrompt(prompt)}
+				onBlur={() => persistPrompt(promptText)}
 				onKeyDown={onPromptKeyDown}
 			/>
 			{mentionQuery != null && filteredMentions.length ? (
@@ -344,10 +361,10 @@ export function ComposerAgentPanel({
 			<button
 				type="button"
 				className="composer-agent-panel__send"
-				disabled={isThinking || !prompt.trim()}
-				onClick={() => void submitPrompt()}
+				disabled={composerBusy || !promptText.trim()}
+				onClick={() => void handleSend()}
 			>
-				{isThinking ? "Génération…" : "Envoyer"}
+				{composerBusy ? "Génération…" : "Envoyer"}
 			</button>
 
 			{hasProposals ? (

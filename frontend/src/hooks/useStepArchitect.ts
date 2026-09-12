@@ -66,6 +66,10 @@ export function useStepArchitect(
 						context.edges,
 						context.layoutAnchorId,
 						rawNode,
+						[],
+						{
+							dataParentId: context.sourceId,
+						},
 					);
 					setProposedNodes([laid.node]);
 					setProposedEdges(laid.edge ? [laid.edge] : []);

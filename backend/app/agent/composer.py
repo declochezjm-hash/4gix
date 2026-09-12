@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.agent.tools import (
@@ -23,6 +24,520 @@ _SIMPLE_FILTER_RE = re.compile(
     r"['\"](?P<field>[A-Za-z_][\w]*)['\"]\s*(?P<op>>=|<=|>|<|==|=)\s*(?P<value>-?\d+(?:[.,]\d+)?)",
     re.IGNORECASE,
 )
+_NATURAL_SUPERIOR_RE = re.compile(
+    r"(?:superieur(?:e)?s?|supérieur(?:e)?s?)\s+(?:à|a)\s*"
+    r"(?P<value>-?\d+(?:[.,]\d+)?)",
+    re.IGNORECASE,
+)
+_NATURAL_INFERIOR_RE = re.compile(
+    r"(?:inferieur(?:e)?s?|inférieur(?:e)?s?)\s+(?:à|a)\s*"
+    r"(?P<value>-?\d+(?:[.,]\d+)?)",
+    re.IGNORECASE,
+)
+_FIELD_HINT_RE = re.compile(
+    r"(?:\bsur\b|\bcolonne\b|\bchamp\b)\s+(?P<hint>.+?)"
+    r"(?:\s+les?\b|\s+où\b|\s+where\b|\s+superieur|\s+supérieur|\s+inferieur|\s+inférieur|\s*[><=])",
+    re.IGNORECASE,
+)
+_FILTER_INTENT_RE = re.compile(
+    r"\b(?:filtre(?:r)?|filter|superieur|supérieur|inferieur|inférieur|>|>=|<|<=|=)\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize_field_token(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _fuzzy_match_column(hint: str, columns: Iterable[str]) -> Optional[str]:
+    cols = [str(c) for c in columns if str(c).strip()]
+    if not cols or not hint.strip():
+        return None
+    hint_norm = _normalize_field_token(hint)
+    if not hint_norm:
+        return None
+    hint_words = [
+        _normalize_field_token(w)
+        for w in re.split(r"\s+", hint.strip())
+        if len(w.strip()) > 2
+    ]
+    best_score = 0.0
+    best_col: Optional[str] = None
+    for col in cols:
+        col_norm = _normalize_field_token(col)
+        if not col_norm:
+            continue
+        if col_norm == hint_norm:
+            return col
+        ratio = difflib.SequenceMatcher(None, hint_norm, col_norm).ratio()
+        word_bonus = sum(
+            0.12 for word in hint_words if word and word in col_norm
+        )
+        ratio = min(1.0, ratio + min(word_bonus, 0.48))
+        if hint_norm in col_norm or col_norm in hint_norm:
+            ratio = max(ratio, 0.9)
+        if ratio > best_score:
+            best_score = ratio
+            best_col = col
+    if best_col and best_score >= 0.42:
+        return best_col
+    return None
+
+
+def _map_operator(op_raw: str) -> str:
+    op_map = {">": "gt", ">=": "gte", "<": "lt", "<=": "lte", "=": "eq", "==": "eq"}
+    key = op_raw.lower()
+    return op_map.get(key, key if key in {"gt", "lt", "eq", "gte", "lte"} else "gt")
+
+
+def _extract_natural_filter(text: str) -> Optional[Dict[str, str]]:
+    if not _FILTER_INTENT_RE.search(text):
+        return None
+    value: Optional[str] = None
+    operator = "gt"
+    sup = _NATURAL_SUPERIOR_RE.search(text)
+    inf = _NATURAL_INFERIOR_RE.search(text)
+    sym = re.search(r"(?P<op>>=|<=|>|<|==|=)\s*['\"]?(-?\d+(?:[.,]\d+)?)", text)
+    if sup:
+        value = sup.group("value").replace(",", ".")
+        operator = "gt"
+    elif inf:
+        value = inf.group("value").replace(",", ".")
+        operator = "lt"
+    elif sym:
+        value = sym.group(2).replace(",", ".")
+        operator = _map_operator(sym.group("op"))
+    else:
+        trailing = re.search(
+            r"(?:>|>=|<|<=|=)\s*(-?\d+(?:[.,]\d+)?)\s*$",
+            text.strip(),
+        )
+        if trailing:
+            value = trailing.group(1).replace(",", ".")
+        else:
+            last_num = re.findall(r"(-?\d+(?:[.,]\d+)?)", text)
+            if last_num:
+                value = last_num[-1].replace(",", ".")
+    if value is None:
+        return None
+
+    field_hint = ""
+    hint_match = _FIELD_HINT_RE.search(text)
+    if hint_match:
+        field_hint = hint_match.group("hint").strip()
+    else:
+        tokens = re.findall(r"[A-Za-zÀ-ÿ_][\wÀ-ÿ]*", text, re.UNICODE)
+        stop = {
+            "filtre",
+            "filter",
+            "moi",
+            "sur",
+            "les",
+            "le",
+            "la",
+            "puissance",
+            "superieur",
+            "supérieur",
+            "inferieur",
+            "inférieur",
+            "a",
+            "à",
+            "estime",
+            "source",
+        }
+        kept = [t for t in tokens if t.lower() not in stop and not t.isdigit()]
+        if kept:
+            field_hint = " ".join(kept[:6])
+
+    if not field_hint:
+        field_hint = "value"
+    return {"field": field_hint, "operator": operator, "value": value}
+
+
+def wants_filter_intent(prompt: str) -> bool:
+    return bool(_FILTER_INTENT_RE.search(prompt or ""))
+
+
+_SOURCE_TYPE_INTENT_RE = re.compile(
+    r"\b(?:filtre(?:r)?|filter|type\s*de\s*source|type\s*source|\bled\b)",
+    re.IGNORECASE,
+)
+
+
+def _pick_type_source_column(columns: Iterable[str]) -> Optional[str]:
+    cols = [str(c) for c in columns if str(c).strip()]
+    if not cols:
+        return None
+    ranked: List[tuple[int, str]] = []
+    for col in cols:
+        norm = _normalize_field_token(col)
+        upper = col.upper()
+        score = 0
+        if norm in {"typesource", "typesources", "typesrc"}:
+            score = 100
+        elif "TYPE" in upper and "SOURCE" in upper:
+            score = 90
+        elif "type" in norm and "source" in norm:
+            score = 85
+        elif "TYPE" in upper and "SUPPORT" in upper:
+            score = 70
+        elif "type" in norm and "support" in norm:
+            score = 65
+        elif "type" in norm:
+            score = 40
+        if score:
+            ranked.append((score, col))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return ranked[0][1]
+
+
+def parse_source_type_filter(
+    prompt: str,
+    columns: Optional[Iterable[str]] = None,
+) -> Optional[Dict[str, str]]:
+    """Fallback : filtre « type de source » / LED sur colonnes TYPE_SOURCE etc."""
+    text = prompt or ""
+    if not _SOURCE_TYPE_INTENT_RE.search(text):
+        return None
+    col_list = list(columns or [])
+    field = _pick_type_source_column(col_list)
+    if not field and re.search(r"type\s*(?:de\s*)?source", text, re.IGNORECASE):
+        for candidate in ("TYPE_SOURCE", "TYPE_SUPPORT", "TYPE_SRC"):
+            if not col_list or candidate in col_list:
+                field = candidate if candidate in col_list else (
+                    _pick_type_source_column([candidate]) or candidate
+                )
+                break
+        if not field:
+            field = "TYPE_SOURCE"
+    if not field:
+        return None
+    lower = text.lower()
+    value = "LED" if re.search(r"\bled\b", lower) else ""
+    if not value:
+        token_match = re.search(
+            r"\bles?\s+([a-zA-ZÀ-ÿ0-9_\-]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if token_match:
+            value = token_match.group(1).strip().upper()
+    if not value:
+        value = "LED"
+    return {"field": field, "operator": "contains", "value": value}
+
+
+def resolve_filter_spec(
+    prompt: str,
+    columns: Optional[Iterable[str]] = None,
+) -> Optional[Dict[str, str]]:
+    return parse_attribute_filter(prompt, columns) or parse_source_type_filter(
+        prompt, columns
+    )
+
+
+_MULTI_FILTER_SPLIT_RE = re.compile(
+    r"\s+(?:"
+    r"et\s+un\s+autre(?:\s+filtre(?:r)?)?"
+    r"|et\s+aussi(?:\s+(?:un\s+)?filtre(?:r)?)?"
+    r"|ainsi\s+que(?:\s+(?:un\s+)?filtre(?:r)?)?"
+    r"|puis(?:\s+(?:un\s+)?filtre(?:r)?)?"
+    r"|et\s+un\s+filtre(?:r)?"
+    r")\b",
+    re.IGNORECASE,
+)
+_STOP_VALUE_WORDS = {
+    "filtre",
+    "filter",
+    "sur",
+    "le",
+    "la",
+    "les",
+    "un",
+    "une",
+    "de",
+    "du",
+    "des",
+    "je",
+    "veux",
+    "moi",
+    "fait",
+    "faire",
+    "et",
+    "puis",
+    "ainsi",
+    "autre",
+    "genere",
+    "génère",
+    "generer",
+    "générer",
+    "exporte",
+    "export",
+    "shp",
+    "shapefile",
+    "fichier",
+}
+_FILTER_VALUE_TAIL_RE = re.compile(
+    r"\s+(?:"
+    r"et(?:\s+(?:un|une|fait|faire|gen[eè]re(?:r)?|exporte(?:r)?|moi|de\s+son\s+c[ôo]t[ée]))?"
+    r"|puis(?:\s+(?:un|une|fait|faire|gen[eè]re(?:r)?))?"
+    r"|ainsi\s+que"
+    r"|et\s+un\s+autre"
+    r").*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_filter_value(raw: str) -> str:
+    text = re.sub(r"\s+", " ", (raw or "").strip(" \t\"'"))
+    text = _FILTER_VALUE_TAIL_RE.sub("", text).strip(" \t\"'.,;")
+    return text.upper()
+
+
+def _words_as_filter_value(text: str) -> Optional[str]:
+    words: List[str] = []
+    for word in re.findall(r"[A-Za-zÀ-ÿ0-9]+", text or ""):
+        if word.lower() in _STOP_VALUE_WORDS:
+            if words:
+                break
+            continue
+        words.append(word.upper())
+        if len(words) >= 4:
+            break
+    if not words:
+        return None
+    value = " ".join(words)
+    if value in {"CSV", "SHP", "GEOJSON", "GPKG", "CC43", "ANALYSE", "ANALYSER"}:
+        return None
+    return value
+
+
+def _contains_value_from_segment(segment: str) -> Optional[str]:
+    text = segment or ""
+    typed = re.search(
+        r"type\s*(?:de\s*)?source\s+['\"]?(.+)$",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if typed:
+        tail = re.split(
+            _MULTI_FILTER_SPLIT_RE,
+            typed.group(1),
+            maxsplit=1,
+        )[0]
+        value = _words_as_filter_value(tail)
+        if value:
+            return value
+    match = re.search(
+        r"(?:que\s+les?\s+|les?\s+|sur\s+)([a-zA-ZÀ-ÿ][\w À-ÿ-]{0,48})",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        raw = re.split(r"\b(?:et|puis|ainsi)\b", match.group(1), maxsplit=1)[0]
+        value = _words_as_filter_value(raw)
+        if value:
+            return value
+    phrase = re.search(r"\b(lampe\s+led|led)\b", text, re.IGNORECASE)
+    if phrase:
+        return _normalize_filter_value(phrase.group(1))
+    return None
+
+
+def _split_filter_clauses(text: str) -> List[str]:
+    parts = [p.strip() for p in _MULTI_FILTER_SPLIT_RE.split(text or "") if p.strip()]
+    if len(parts) >= 2:
+        return parts
+    hits = list(re.finditer(r"\bfiltre(?:r)?s?\b", text or "", re.IGNORECASE))
+    if len(hits) >= 2:
+        clauses: List[str] = []
+        for index, match in enumerate(hits):
+            end = hits[index + 1].start() if index + 1 < len(hits) else len(text)
+            clauses.append(text[match.start() : end].strip())
+        return [c for c in clauses if c]
+    return [text] if text.strip() else []
+
+
+def _type_source_values(text: str) -> List[str]:
+    values: List[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"type\s*(?:de\s*)?source\s+", text or "", re.IGNORECASE):
+        rest = (text or "")[match.end() :]
+        rest = _MULTI_FILTER_SPLIT_RE.split(rest, maxsplit=1)[0]
+        value = _words_as_filter_value(rest)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    if len(values) < 2:
+        for match in re.finditer(r"\b(lampe\s+led|led)\b", text or "", re.IGNORECASE):
+            value = _normalize_filter_value(match.group(1))
+            if value not in seen:
+                seen.add(value)
+                values.append(value)
+    return values
+
+
+def parse_multiple_filter_specs(
+    prompt: str,
+    columns: Optional[Iterable[str]] = None,
+) -> List[Dict[str, str]]:
+    """Découpe chaque critère de filtre en une spec distincte (jamais fusionnés)."""
+    text = prompt or ""
+    col_list = list(columns or [])
+    field = _pick_type_source_column(col_list) or "TYPE_SOURCE"
+    specs: List[Dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def _push(value: str, operator: str = "contains") -> None:
+        cleaned = _normalize_filter_value(value)
+        if not cleaned:
+            return
+        key = (field.upper(), operator, cleaned)
+        if key in seen:
+            return
+        seen.add(key)
+        specs.append({"field": field, "operator": operator, "value": cleaned})
+
+    for value in _type_source_values(text):
+        _push(value)
+
+    if len(specs) < 2:
+        for part in _split_filter_clauses(text):
+            spec = resolve_filter_spec(part, col_list)
+            value = _contains_value_from_segment(part)
+            if value:
+                _push(value, "contains")
+            elif spec:
+                _push(str(spec.get("value") or ""), spec.get("operator") or "contains")
+
+    if not specs:
+        single = resolve_filter_spec(text, col_list)
+        if single:
+            return [single]
+    return specs
+
+
+_BRANCH_OBJECTIVE_SPLIT_RE = re.compile(
+    r"\s+(?:"
+    r"et\s+un\s+autre(?:\s+filtre(?:r)?)?"
+    r"|et\s+de\s+son\s+c[ôo]t[ée]"
+    r"|d['\u2019]un\s+autre\s+c[ôo]t[ée]"
+    r"|et\s+aussi(?:\s+(?:un\s+)?filtre(?:r)?)?"
+    r"|ainsi\s+que(?:\s+(?:un\s+)?filtre(?:r)?)?"
+    r"|et\s+un\s+filtre(?:r)?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class ParallelBranchObjective:
+    """Sous-objectif indépendant (filtre + export éventuel) depuis la source."""
+
+    text: str
+    filter_spec: Optional[Dict[str, str]]
+    writer_type: Optional[str]
+
+
+def _clause_for_filter_parse(clause: str) -> str:
+    """Retire la partie export (« et génère un shp ») avant d'extraire la valeur filtre."""
+    text = (clause or "").strip()
+    export_cut = re.search(
+        r"\b(?:"
+        r"et\s+(?:fait(?:\s+moi)?|faire)|"
+        r"(?:et\s+)?(?:"
+        r"gen[eè]re(?:r)?|exporte(?:r)?|cr[eé]e(?:r)?|sauve(?:r|garde)?|"
+        r"enregistre(?:r)?|produi(?:s|t|re)|fabrique(?:r)?"
+        r")"
+        r")(?:\s+moi)?(?:\s+(?:un|une|le|la))?\s*(?:"
+        r"shp|shapefile|geojson|gpkg|geopackage|csv|fichier"
+        r")?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if export_cut:
+        return text[: export_cut.start()].strip(" ,.;")
+    branch_cut = _BRANCH_OBJECTIVE_SPLIT_RE.search(text)
+    if branch_cut:
+        return text[: branch_cut.start()].strip(" ,.;")
+    return text
+
+
+def _filter_spec_for_clause(clause: str, columns: List[str]) -> Optional[Dict[str, str]]:
+    cleaned = _clause_for_filter_parse(clause)
+    col_list = list(columns or [])
+    field = _pick_type_source_column(col_list) or "TYPE_SOURCE"
+    value = _contains_value_from_segment(cleaned)
+    if value:
+        return {"field": field, "operator": "contains", "value": value}
+    specs = parse_multiple_filter_specs(cleaned, columns)
+    if specs:
+        return specs[0]
+    return resolve_filter_spec(cleaned, columns)
+
+
+def parse_parallel_branch_objectives(
+    prompt: str,
+    columns: Optional[Iterable[str]] = None,
+) -> List[ParallelBranchObjective]:
+    """Découpe en branches parallèles (chaque branche repart de la source)."""
+    text = (prompt or "").strip()
+    if not text:
+        return []
+    col_list = list(columns or [])
+    parts = [
+        p.strip()
+        for p in _BRANCH_OBJECTIVE_SPLIT_RE.split(text)
+        if p and p.strip()
+    ]
+    if len(parts) < 2:
+        return []
+    branches: List[ParallelBranchObjective] = []
+    for index, part in enumerate(parts):
+        clause = part
+        if index > 0 and not re.search(r"\bfiltre", clause, re.IGNORECASE):
+            clause = f"filtre {clause}"
+        filter_spec = _filter_spec_for_clause(clause, col_list)
+        writer_type = detect_export_writer(clause)
+        if filter_spec or writer_type:
+            branches.append(
+                ParallelBranchObjective(
+                    text=clause,
+                    filter_spec=filter_spec,
+                    writer_type=writer_type,
+                )
+            )
+    return branches if len(branches) >= 2 else []
+
+
+def parse_attribute_filter(
+    prompt: str,
+    columns: Optional[Iterable[str]] = None,
+) -> Optional[Dict[str, str]]:
+    text = prompt or ""
+    match = _FILTER_RE.search(text) or _SIMPLE_FILTER_RE.search(text)
+    spec: Optional[Dict[str, str]] = None
+    if match:
+        spec = {
+            "field": match.group("field"),
+            "operator": _map_operator(match.group("op")),
+            "value": match.group("value").replace(",", "."),
+        }
+    else:
+        spec = _extract_natural_filter(text)
+
+    if not spec:
+        return None
+
+    col_list = list(columns or [])
+    if col_list:
+        resolved = _fuzzy_match_column(spec["field"], col_list)
+        if resolved:
+            spec = {**spec, "field": resolved}
+    return spec
 
 
 def _is_reader(ntype: str) -> bool:
@@ -71,22 +586,6 @@ def find_source_node(
     if readers:
         return readers[0]
     return nodes[0] if nodes else None
-
-
-def parse_attribute_filter(prompt: str) -> Optional[Dict[str, str]]:
-    text = prompt or ""
-    match = _FILTER_RE.search(text) or _SIMPLE_FILTER_RE.search(text)
-    if not match:
-        return None
-    op_raw = match.group("op").lower()
-    op_map = {">": "gt", ">=": "gte", "<": "lt", "<=": "lte", "=": "eq", "==": "eq"}
-    operator = op_map.get(op_raw, op_raw if op_raw in {"gt", "lt", "eq"} else "gt")
-    value = match.group("value").replace(",", ".")
-    return {
-        "field": match.group("field"),
-        "operator": operator,
-        "value": value,
-    }
 
 
 def detect_export_writer(prompt: str) -> Optional[str]:
@@ -275,20 +774,31 @@ def plan_composer(
     current_graph: Optional[Dict[str, Any]] = None,
     selected_node_id: Optional[str] = None,
     context_mentions: Optional[Iterable[str]] = None,
+    source_node_id: Optional[str] = None,
+    node_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Produit la séquence SSE (thought / tool_call / code_diff)."""
     graph = current_graph or {"nodes": [], "edges": []}
     mentions = [str(item) for item in (context_mentions or [])]
-    source = find_source_node(graph, selected_node_id)
-    source_id = str(source.get("id")) if source else (selected_node_id or "csv_reader-1")
+    anchor_id = node_id or selected_node_id
+    source = find_source_node(graph, anchor_id)
+    if source_node_id:
+        for node in graph_nodes(graph):
+            if str(node.get("id")) == str(source_node_id):
+                source = node
+                break
+    source_id = (
+        str(source.get("id"))
+        if source
+        else (source_node_id or anchor_id or "csv_reader-1")
+    )
     source_type = node_type_of(source) if source else "csv_reader"
     origin = _source_position(source)
-    if selected_node_id:
+    if anchor_id:
         for node in graph_nodes(graph):
-            if str(node.get("id")) == str(selected_node_id):
+            if str(node.get("id")) == str(anchor_id):
                 origin = _source_position(node)
                 break
-    filter_spec = parse_attribute_filter(prompt)
     writer_type = detect_export_writer(prompt)
     target_crs = parse_target_crs(prompt) if _wants_reproject(prompt) else None
     events: List[Dict[str, Any]] = []
@@ -314,6 +824,13 @@ def plan_composer(
             result=inspect_result,
         )
     )
+
+    schema_columns = [
+        str(item.get("name"))
+        for item in (inspect_result.get("fields") or [])
+        if isinstance(item, dict) and item.get("name")
+    ]
+    filter_spec = resolve_filter_spec(prompt, schema_columns)
 
     # Cas cible : CSV → attribute_filter → GeoPackage
     use_filter_writer = bool(filter_spec) and writer_type in {
@@ -448,6 +965,63 @@ def plan_composer(
                 )
             )
 
+    elif filter_spec and not use_filter_writer and not _wants_python(prompt):
+        op_label = {
+            ">": ">",
+            "gt": ">",
+            "gte": ">=",
+            "lt": "<",
+            "eq": "=",
+            "contains": "contient",
+        }.get(filter_spec["operator"], filter_spec["operator"])
+        events.append(
+            _event(
+                "thought",
+                content=(
+                    f"Filtre attributaire : colonne « {filter_spec['field']} » "
+                    f"{op_label} {filter_spec['value']} "
+                    f"(correspondance schéma amont parmi {len(schema_columns)} attribut(s))."
+                ),
+            )
+        )
+        filter_args = {
+            "node_type": "attribute_filter",
+            "position": {"x": origin["x"] + 280, "y": origin["y"]},
+            "config": {
+                "field": filter_spec["field"],
+                "operator": filter_spec["operator"]
+                if filter_spec["operator"] != "gte"
+                else "gt",
+                "value": filter_spec["value"],
+            },
+        }
+        filter_node = execute_tool("create_canvas_node", filter_args, graph)
+        created_ids["attribute_filter"] = filter_node["id"]
+        events.append(
+            _event(
+                "tool_call",
+                name="create_canvas_node",
+                summary="create_node(attribute_filter)",
+                arguments=filter_args,
+                result=filter_node,
+            )
+        )
+        connect_filter_args = {
+            "from_node_id": source_id,
+            "from_port": "output",
+            "to_node_id": filter_node["id"],
+            "to_port": "input",
+        }
+        events.append(
+            _event(
+                "tool_call",
+                name="connect_nodes",
+                summary="connect(...)",
+                arguments=connect_filter_args,
+                result=execute_tool("connect_nodes", connect_filter_args, graph),
+            )
+        )
+
     elif _wants_python(prompt) and filter_spec:
         code = _python_filter_code(
             filter_spec["field"],
@@ -561,15 +1135,28 @@ def plan_composer(
                 )
             )
         else:
-            events.append(
-                _event(
-                    "thought",
-                    content=(
-                        "Aucune séquence filtre/export détectée — inspection uniquement. "
-                        "Ajoutez une consigne de transformation pour générer des nœuds."
-                    ),
+            if wants_filter_intent(prompt) and not filter_spec:
+                col_preview = ", ".join(schema_columns[:8]) if schema_columns else "—"
+                events.append(
+                    _event(
+                        "thought",
+                        content=(
+                            "Intention de filtrage détectée, mais aucune colonne du schéma "
+                            f"ne correspond clairement à votre consigne (colonnes vues : {col_preview}). "
+                            "Précisez le nom d’attribut ou exécutez Test step sur le reader amont."
+                        ),
+                    )
                 )
-            )
+            else:
+                events.append(
+                    _event(
+                        "thought",
+                        content=(
+                            "Aucune séquence filtre/export détectée — inspection uniquement. "
+                            "Ajoutez une consigne de transformation pour générer des nœuds."
+                        ),
+                    )
+                )
 
     sequence = [
         item.get("summary")

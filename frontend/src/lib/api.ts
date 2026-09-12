@@ -536,6 +536,7 @@ export type StepArchitectPreviousStep = {
 	index: number;
 	node_id: string;
 	step_summary: string;
+	branch_id?: number;
 };
 
 export type StepArchitectResult = {
@@ -551,8 +552,70 @@ export type StepArchitectResult = {
 	proposed_node?: Record<string, unknown> | null;
 	proposed_edge?: Record<string, unknown> | null;
 	anchor_node_id?: string;
+	layout_anchor_node_id?: string;
+	attach_to_source?: boolean;
+	branch_index?: number;
+	branch_id?: number;
 	inspect?: Record<string, unknown>;
+	proactive_suggestions?: string[];
+	geometry_notices?: string[];
 };
+
+export type ExecutionHealResult = {
+	ok: boolean;
+	explanation?: string;
+	error?: string;
+	failed_node_id?: string;
+	corrective_steps?: Array<Record<string, unknown>>;
+	proposed_node?: Record<string, unknown> | null;
+	proposed_edge?: Record<string, unknown> | null;
+	heal_followup_edge?: {
+		from_node_id?: string | null;
+		to_node_id?: string | null;
+	} | null;
+};
+
+export async function executionHealAgent(payload: {
+	error_message: string;
+	failed_node_id: string;
+	global_objective?: string;
+	source_node_id?: string | null;
+	current_graph: {
+		nodes: unknown[];
+		edges: unknown[];
+		snapshots: Record<string, NodeSnapshot>;
+	};
+}): Promise<ExecutionHealResult> {
+	const response = await fetchWithTimeout(
+		`${API_BASE}/api/v1/agent/execution-heal`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		},
+		STEP_ARCHITECT_TIMEOUT_MS,
+	);
+	const raw = await response.text();
+	let body: Record<string, unknown> = {};
+	try {
+		body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+	} catch {
+		throw new Error(
+			raw.trim().slice(0, 240) ||
+				`Réponse invalide du serveur (${response.status}).`,
+		);
+	}
+	if (!response.ok) {
+		const detail =
+			body.detail !== undefined
+				? formatFastApiDetail(body.detail)
+				: typeof body.error === "string"
+					? body.error
+					: `Échec HTTP ${response.status} — auto-healing.`;
+		throw new Error(detail);
+	}
+	return body as ExecutionHealResult;
+}
 
 export async function stepArchitectAgent(payload: {
 	global_objective: string;

@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.agent.auto_heal import plan_execution_heal
 from app.agent.composer import plan_composer
 from app.agent.step_architect import plan_step_architect
 from app.agent.tools import AGENT_OPENAI_TOOLS
@@ -34,6 +35,14 @@ class StepArchitectRequest(BaseModel):
     )
 
 
+class ExecutionHealRequest(BaseModel):
+    error_message: str = Field(..., min_length=1)
+    failed_node_id: str = Field(..., min_length=1)
+    global_objective: str = Field(default="")
+    source_node_id: Optional[str] = Field(default=None)
+    current_graph: CurrentGraph = Field(default_factory=CurrentGraph)
+
+
 class ComposerRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="Instruction utilisateur (langage naturel).")
     current_graph: CurrentGraph = Field(
@@ -43,6 +52,14 @@ class ComposerRequest(BaseModel):
     selected_node_id: Optional[str] = Field(
         default=None,
         description="Nœud sélectionné (contexte d'édition).",
+    )
+    node_id: Optional[str] = Field(
+        default=None,
+        description="Nœud Composer Agent (alias explicite).",
+    )
+    source_node_id: Optional[str] = Field(
+        default=None,
+        description="Reader / source de données amont pour inspect_input_schema.",
     )
     context_mentions: List[str] = Field(
         default_factory=list,
@@ -69,8 +86,10 @@ async def composer(request: ComposerRequest) -> StreamingResponse:
     events = plan_composer(
         prompt=request.prompt,
         current_graph=request.current_graph.model_dump(),
-        selected_node_id=request.selected_node_id,
+        selected_node_id=request.selected_node_id or request.node_id,
         context_mentions=request.context_mentions,
+        source_node_id=request.source_node_id,
+        node_id=request.node_id or request.selected_node_id,
     )
     return StreamingResponse(
         _sse_stream(events),
@@ -96,6 +115,18 @@ def step_architect(request: StepArchitectRequest) -> Dict[str, Any]:
         current_graph=request.current_graph.model_dump(),
         source_node_id=request.source_node_id,
         layout_anchor_node_id=request.layout_anchor_node_id,
+    )
+
+
+@router.post("/agent/execution-heal")
+def execution_heal(request: ExecutionHealRequest) -> Dict[str, Any]:
+    """Propose un correctif après échec d'exécution (géométrie / CRS / export SHP)."""
+    return plan_execution_heal(
+        error_message=request.error_message,
+        failed_node_id=request.failed_node_id,
+        current_graph=request.current_graph.model_dump(),
+        global_objective=request.global_objective,
+        source_node_id=request.source_node_id,
     )
 
 

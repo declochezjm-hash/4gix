@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Point
 
 from app.core.config import settings
+from app.core.readers.tabular import find_xy_columns
 from app.nodes.base import Base4GIxNode, _as_feature_collection, unwrap_input_data
 
 
@@ -51,6 +54,34 @@ class FileWriter(Base4GIxNode):
         driver = params.get("driver") or "GeoJSON"
 
         gdf = gpd.GeoDataFrame.from_features(fc.get("features") or [], crs="EPSG:4326")
+        if (
+            hasattr(gdf, "geometry")
+            and (gdf.geometry.isna().all() or "geometry" not in gdf.columns)
+            and len(gdf) > 0
+        ):
+            pair = find_xy_columns([str(c) for c in gdf.columns])
+            if pair:
+                x_col, y_col = pair
+                work = gdf.copy()
+                work[x_col] = pd.to_numeric(work[x_col], errors="coerce")
+                work[y_col] = pd.to_numeric(work[y_col], errors="coerce")
+                work = work.dropna(subset=[x_col, y_col])
+                geometry = [
+                    Point(xy) for xy in zip(work[x_col], work[y_col], strict=True)
+                ]
+                attrs = work.drop(columns=[x_col, y_col], errors="ignore")
+                gdf = gpd.GeoDataFrame(attrs, geometry=geometry, crs="EPSG:4326")
+
+        spatial_driver = driver not in {"CSV", None}
+        no_geom = (
+            not hasattr(gdf, "geometry")
+            or gdf.geometry.isna().all()
+            or "geometry" not in gdf.columns
+        )
+        if spatial_driver and no_geom:
+            driver = "CSV"
+            path = path.with_suffix(".csv")
+
         if driver == "CSV":
             df = gdf.drop(columns=["geometry"], errors="ignore")
             df.to_csv(path, index=False)
