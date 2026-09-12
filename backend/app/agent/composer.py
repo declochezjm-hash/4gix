@@ -95,7 +95,7 @@ def detect_export_writer(prompt: str) -> Optional[str]:
         return "gpkg_writer"
     if "geojson" in text:
         return "geojson_writer"
-    if "shapefile" in text or ".shp" in text:
+    if re.search(r"shapefile|\.shp\b|\bshp\b|vector_writer", text, re.IGNORECASE):
         return "shapefile_writer"
     if "postgis" in text:
         return "postgis_writer"
@@ -111,6 +111,8 @@ def _wants_python(prompt: str) -> bool:
 
 def _wants_analysis(prompt: str) -> bool:
     text = (prompt or "").lower()
+    if re.search(r"\b(?:lire|lecture)\b", text):
+        return True
     return any(
         token in text
         for token in (
@@ -168,15 +170,30 @@ def _format_schema_thought(inspect: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+_CC_ZONE_RE = re.compile(r"\bcc\s*[-_]?(\d{2})\b", re.IGNORECASE)
+
+
+def _parse_cc_zone_crs(prompt: str) -> Optional[str]:
+    """Lambert-93 Conique Conforme : CC42–CC50 → EPSG:3942–3950 (CC43 = EPSG:3943)."""
+    match = _CC_ZONE_RE.search(prompt or "")
+    if not match:
+        return None
+    zone = int(match.group(1))
+    if 42 <= zone <= 50:
+        return f"EPSG:{3900 + zone}"
+    return None
+
+
 def _wants_reproject(prompt: str) -> bool:
     text = (prompt or "").lower()
+    if _parse_cc_zone_crs(text):
+        return True
     return any(
         token in text
         for token in (
             "projection",
-            "reprojet",
+            "reproj",
             "reproject",
-            "reprojeter",
             "crs",
             "epsg",
             "lambert",
@@ -195,6 +212,9 @@ def parse_target_crs(prompt: str) -> str:
     match = re.search(r"EPSG\s*:?\s*(\d{4,6})", text, re.IGNORECASE)
     if match:
         return f"EPSG:{match.group(1)}"
+    cc_crs = _parse_cc_zone_crs(text)
+    if cc_crs:
+        return cc_crs
     lower = text.lower()
     if "3857" in lower or "mercator" in lower:
         return "EPSG:3857"

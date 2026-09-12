@@ -80,7 +80,7 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 		<>
 			<NodeActionBar nodeId={id} visible={Boolean(selected) && !ghost} />
 			<div
-				className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""} ${payload.disabled ? "is-disabled" : ""} ${ghost ? "ghost-node-overlay" : ""} ${payload.nodeType === "composer_agent" ? "n8n-node--composer" : ""}`}
+				className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""} ${payload.disabled ? "is-disabled" : ""} ${ghost ? "ghost-node-overlay" : ""} ${payload.nodeType === "composer_agent" ? "n8n-node--composer" : ""} ${payload.nodeType === "auto_architect_agent" ? "n8n-node--auto-architect" : ""}`}
 				style={{ minHeight: 88 + Math.max(0, rows - 1) * 18 }}
 			>
 				{ghost ? (

@@ -23,8 +23,13 @@ export function NodeModal() {
 	}, []);
 
 	useEffect(() => {
-		setConfigTab("parameters");
-	}, [selectedNodeId]);
+		const selected = nodes.find((n) => n.id === selectedNodeId);
+		setConfigTab(
+			selected?.data.nodeType === "direct_agent_processor"
+				? "directChat"
+				: "parameters",
+		);
+	}, [selectedNodeId, nodes]);
 
 	useEffect(() => {
 		if (!inspectorOpen) return;
@@ -80,11 +85,20 @@ export function NodeModal() {
 						type="button"
 						className="n8n-test-btn"
 						onClick={() => void runSelectedNode()}
-						disabled={running || node.data.nodeType === "composer_agent"}
+						disabled={
+							running ||
+							node.data.nodeType === "composer_agent" ||
+							node.data.nodeType === "direct_agent_processor" ||
+							node.data.nodeType === "auto_architect_agent"
+						}
 						title={
 							node.data.nodeType === "composer_agent"
 								? "Le Composer ne s'exécute pas — Accept pour matérialiser le graphe"
-								: undefined
+								: node.data.nodeType === "direct_agent_processor"
+									? "Utilisez Exécuter sur le nœud ou Tchat Direct"
+									: node.data.nodeType === "auto_architect_agent"
+										? "Configurez via l'inspecteur Auto-Architect"
+										: undefined
 						}
 					>
 						{running ? "Executing…" : "Test step"}

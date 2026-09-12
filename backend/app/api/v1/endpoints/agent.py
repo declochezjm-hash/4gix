@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent.composer import plan_composer
+from app.agent.step_architect import plan_step_architect
 from app.agent.tools import AGENT_OPENAI_TOOLS
 
 router = APIRouter(tags=["agent"])
@@ -18,6 +19,19 @@ router = APIRouter(tags=["agent"])
 class CurrentGraph(BaseModel):
     nodes: List[Dict[str, Any]] = Field(default_factory=list)
     edges: List[Dict[str, Any]] = Field(default_factory=list)
+    snapshots: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StepArchitectRequest(BaseModel):
+    global_objective: str = Field(..., min_length=1)
+    current_step_index: int = Field(default=0, ge=0)
+    previous_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    current_graph: CurrentGraph = Field(default_factory=CurrentGraph)
+    source_node_id: str = Field(..., min_length=1)
+    layout_anchor_node_id: Optional[str] = Field(
+        default=None,
+        description="Ancre visuelle (Auto-Architect Agent). Distincte de source_node_id (reader).",
+    )
 
 
 class ComposerRequest(BaseModel):
@@ -66,6 +80,22 @@ async def composer(request: ComposerRequest) -> StreamingResponse:
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@router.post("/agent/step-architect")
+def step_architect(request: StepArchitectRequest) -> Dict[str, Any]:
+    """
+    Auto-architecte step-by-step : plan global à l'étape 0, puis une mutation
+    canvas (nœud + liaison) par index d'étape.
+    """
+    return plan_step_architect(
+        global_objective=request.global_objective,
+        current_step_index=request.current_step_index,
+        previous_steps=request.previous_steps,
+        current_graph=request.current_graph.model_dump(),
+        source_node_id=request.source_node_id,
+        layout_anchor_node_id=request.layout_anchor_node_id,
     )
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ComposerAgentProvider } from "./components/agent/ComposerAgentContext";
+import { ComposerDrawer } from "./components/agent/ComposerDrawer";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
 import { TopBar } from "./components/Header/TopBar";
@@ -15,6 +16,8 @@ export default function App() {
 	const importLocalWorkflowFile = useDagStore((s) => s.importLocalWorkflowFile);
 	const selectedNodeId = useDagStore((s) => s.selectedNodeId);
 	const openInspector = useDagStore((s) => s.openInspector);
+	const composerDrawerOpen = useDagStore((s) => s.composerDrawerOpen);
+	const setComposerDrawerOpen = useDagStore((s) => s.setComposerDrawerOpen);
 	const deleteNode = useDagStore((s) => s.deleteNode);
 	const copyNode = useDagStore((s) => s.copyNode);
 	const pasteNode = useDagStore((s) => s.pasteNode);
@@ -73,6 +76,10 @@ export default function App() {
 			if (event.key === "Enter" && selectedNodeId) {
 				openInspector(selectedNodeId);
 			}
+			if (event.ctrlKey && event.key.toLowerCase() === "i") {
+				event.preventDefault();
+				setComposerDrawerOpen(!composerDrawerOpen);
+			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -86,6 +93,8 @@ export default function App() {
 		renameSelectedNode,
 		tidyUpWorkflow,
 		openInspector,
+		composerDrawerOpen,
+		setComposerDrawerOpen,
 	]);
 
 	return (
@@ -125,6 +134,7 @@ export default function App() {
 								<FlowCanvas />
 								<NodePanelRight />
 								<NodeModal />
+								<ComposerDrawer />
 							</main>
 						</div>
 					</ComposerAgentProvider>

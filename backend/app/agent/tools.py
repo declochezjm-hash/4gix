@@ -78,6 +78,7 @@ NODE_TYPE_ALIASES: Dict[str, str] = {
     "geojson_writer": "file_writer",
     "csv_writer": "file_writer",
     "shapefile_writer": "file_writer",
+    "vector_writer": "file_writer",
     "code": "python_caller",
     "code_node": "python_caller",
     "filter": "attribute_filter",
@@ -167,7 +168,7 @@ def writer_config_for(requested_type: str, config: Dict[str, Any]) -> Dict[str, 
     elif requested in {"csv_writer"}:
         params.setdefault("driver", "CSV")
         params.setdefault("path", "/workspace/output.csv")
-    elif requested in {"shapefile_writer"}:
+    elif requested in {"shapefile_writer", "vector_writer"}:
         params.setdefault("driver", "ESRI Shapefile")
         params.setdefault("path", "/workspace/output.shp")
     return params
@@ -386,6 +387,10 @@ def create_canvas_node_payload(
         is_spatial = True
     elif requested == "geojson_writer":
         label = "GeoJSON Writer"
+        category = "Writer"
+        is_spatial = True
+    elif requested in {"shapefile_writer", "vector_writer"}:
+        label = "Shapefile Writer"
         category = "Writer"
         is_spatial = True
     elif requested == "attribute_filter":

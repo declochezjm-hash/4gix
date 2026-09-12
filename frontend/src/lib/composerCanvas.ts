@@ -1,6 +1,7 @@
 import type { Connection, Edge, Node } from "@xyflow/react";
 
-import type { FlowNodeData } from "./api";
+import type { FlowNodeData, NodeSnapshot } from "./api";
+import { N8N_EDGE_TYPE } from "./canvasEdges";
 import {
 	buildCanvasEdge,
 	type EdgePathStyle,
@@ -153,6 +154,341 @@ export function applyComposerGraphReplacement(
 	}
 
 	return { nodes: [...keptNodes, ...nextNodes], edges: allEdges };
+}
+
+const GHOST_EDGE_STYLE = {
+	stroke: "#a855f7",
+	strokeWidth: 2.5,
+	strokeDasharray: "5,5",
+} as const;
+
+function resolvedNodeType(node?: Node<FlowNodeData>): string {
+	if (!node?.data) return "";
+	return String(
+		node.data.nodeType || node.data.requestedNodeType || "",
+	).toLowerCase();
+}
+
+function isReaderNodeType(nodeType: string): boolean {
+	return nodeType.endsWith("_reader") || nodeType === "file_reader";
+}
+
+export function enrichNodesWithSnapshots(
+	nodes: Node<FlowNodeData>[],
+	snapshots: Record<string, NodeSnapshot>,
+): Node<FlowNodeData>[] {
+	return nodes.map((node) => {
+		const snap = snapshots[node.id];
+		const fromData =
+			node.data.outputSnapshot ??
+			(node.data as { output_snapshot?: unknown }).output_snapshot;
+		if (!snap && !fromData) return node;
+		return {
+			...node,
+			data: {
+				...node.data,
+				...(snap
+					? {
+							outputSnapshot: snap.output_snapshot ?? snap.preview,
+							inputSnapshot: snap.input_snapshot,
+						}
+					: {}),
+				...(fromData && !snap ? { outputSnapshot: fromData } : {}),
+			},
+		};
+	});
+}
+
+export function graphForAgentRequest(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	snapshots: Record<string, NodeSnapshot>,
+) {
+	const enriched = enrichNodesWithSnapshots(nodes, snapshots);
+	return {
+		nodes: enriched
+			.filter((node) => !node.data.isGhost)
+			.map((node) => ({
+				id: node.id,
+				type: node.type || "etl",
+				position: node.position,
+				data: node.data,
+			})),
+		edges: edges
+			.filter((edge) => !(edge.data as { isGhost?: boolean })?.isGhost)
+			.map((edge) => ({
+				id: edge.id,
+				source: edge.source,
+				target: edge.target,
+				sourceHandle: edge.sourceHandle,
+				targetHandle: edge.targetHandle,
+			})),
+		snapshots,
+	};
+}
+
+/** Graphe API incluant les propositions déjà posées (chaîne fantômes). */
+export function graphForStepArchitectRequest(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	snapshots: Record<string, NodeSnapshot>,
+	pendingNodes: Node<FlowNodeData>[] = [],
+	pendingEdges: Edge[] = [],
+) {
+	const base = graphForAgentRequest(nodes, edges, snapshots);
+	const extraNodes = pendingNodes.map((node) => ({
+		id: node.id,
+		type: node.type || "etl",
+		position: node.position,
+		data: { ...node.data, isGhost: undefined },
+	}));
+	const extraEdges = pendingEdges.map((edge) => ({
+		id: edge.id,
+		source: edge.source,
+		target: edge.target,
+		sourceHandle: edge.sourceHandle,
+		targetHandle: edge.targetHandle,
+	}));
+	return {
+		...base,
+		nodes: [...base.nodes, ...extraNodes],
+		edges: [...base.edges, ...extraEdges],
+	};
+}
+
+function asFlowNodeData(raw: Record<string, unknown>): FlowNodeData {
+	const category = raw.category as FlowNodeData["category"];
+	return {
+		label: String(raw.label ?? "Nœud"),
+		nodeType: String(raw.nodeType ?? raw.node_type ?? "transformer"),
+		category:
+			category === "Reader" ||
+			category === "Transformer" ||
+			category === "Writer"
+				? category
+				: "Transformer",
+		isSpatial: Boolean(raw.isSpatial ?? raw.is_spatial),
+		params: (raw.params as Record<string, unknown>) ?? {},
+		schema: raw.schema as FlowNodeData["schema"],
+		status: "idle",
+		inputHandles: (raw.inputHandles as string[]) ?? ["input"],
+		outputHandles: (raw.outputHandles as string[]) ?? ["output"],
+		paletteGroup: String(raw.paletteGroup ?? raw.palette_group ?? ""),
+		notes: String(raw.notes ?? ""),
+		disabled: Boolean(raw.disabled),
+		isGhost: true,
+	};
+}
+
+export const ARCHITECT_STEP_OFFSET_X = 300;
+export const ARCHITECT_BRANCH_OFFSET_Y = 40;
+
+export function isAutoArchitectNode(
+	node?: Node<FlowNodeData>,
+): boolean {
+	return resolvedNodeType(node) === "auto_architect_agent";
+}
+
+/**
+ * Ancre visuelle : Auto-Architect Agent (jamais le reader CSV amont).
+ * Si `layoutAnchorNodeId` est un reader, on bascule sur l'agent s'il existe.
+ */
+export function resolveArchitectLayoutAnchorId(
+	nodes: Node<FlowNodeData>[],
+	layoutAnchorNodeId: string,
+): string {
+	const requested = nodes.find((node) => node.id === layoutAnchorNodeId);
+	if (requested && isAutoArchitectNode(requested)) {
+		return requested.id;
+	}
+	if (requested && !isReaderNodeType(resolvedNodeType(requested))) {
+		return requested.id;
+	}
+	const architect = nodes.find((node) => isAutoArchitectNode(node));
+	if (architect) return architect.id;
+	return layoutAnchorNodeId;
+}
+
+export function architectEdgeExists(
+	edges: Edge[],
+	sourceId: string,
+	targetId: string,
+): boolean {
+	return edges.some(
+		(edge) => edge.source === sourceId && edge.target === targetId,
+	);
+}
+
+export function createArchitectGhostEdge(
+	sourceId: string,
+	targetId: string,
+	existingEdges: Edge[],
+): Edge | null {
+	if (architectEdgeExists(existingEdges, sourceId, targetId)) {
+		return null;
+	}
+	return {
+		id: `ghost-e-${sourceId}-${targetId}`,
+		source: sourceId,
+		target: targetId,
+		sourceHandle: "output",
+		targetHandle: "input",
+		type: N8N_EDGE_TYPE,
+		animated: true,
+		data: { isGhost: true, pathStyle: "default" as const },
+		style: { ...GHOST_EDGE_STYLE },
+	};
+}
+
+export function layoutArchitectNodePosition(
+	nodes: Node<FlowNodeData>[],
+	layoutAnchorNodeId: string,
+	_branchIndex = 0,
+): { x: number; y: number } {
+	const anchorId = resolveArchitectLayoutAnchorId(nodes, layoutAnchorNodeId);
+	const anchor = nodes.find((node) => node.id === anchorId);
+	const lastX = anchor?.position.x ?? 100;
+	const lastY = anchor?.position.y ?? 100;
+	return {
+		x: lastX + ARCHITECT_STEP_OFFSET_X,
+		y: lastY,
+	};
+}
+
+/** Position + arête imposées côté UI : ligne horizontale depuis l'Auto-Architect. */
+export function applyArchitectSequentialLayout(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	layoutAnchorNodeId: string,
+	proposedNode: Node<FlowNodeData>,
+	extraEdges: Edge[] = [],
+): { node: Node<FlowNodeData>; edge: Edge | null } {
+	const canvasNodes = nodes;
+	const allEdges = [...edges, ...extraEdges];
+	const anchorId = resolveArchitectLayoutAnchorId(
+		canvasNodes,
+		layoutAnchorNodeId,
+	);
+	const position = layoutArchitectNodePosition(canvasNodes, anchorId, 0);
+	const node: Node<FlowNodeData> = {
+		...proposedNode,
+		position,
+	};
+	const edge = createArchitectGhostEdge(anchorId, node.id, allEdges);
+	return { node, edge };
+}
+
+export function ghostNodeFromArchitectPayload(
+	result: Record<string, unknown>,
+): Node<FlowNodeData> {
+	const dataRaw =
+		typeof result.data === "object" && result.data
+			? (result.data as Record<string, unknown>)
+			: {};
+	const position =
+		typeof result.position === "object" && result.position
+			? (result.position as { x?: number; y?: number })
+			: { x: 0, y: 0 };
+	const nodeType = String(dataRaw.nodeType ?? dataRaw.node_type ?? "etl");
+	return {
+		id: String(result.id ?? `ghost-${crypto.randomUUID()}`),
+		type: nodeType === "direct_agent_processor" ? nodeType : "etl",
+		position: {
+			x: Number(position.x ?? 0),
+			y: Number(position.y ?? 0),
+		},
+		data: asFlowNodeData(dataRaw),
+	};
+}
+
+export function ghostEdgeFromArchitectPayload(
+	result: Record<string, unknown>,
+): Edge {
+	return {
+		id: String(result.id ?? `ghost-edge-${crypto.randomUUID()}`),
+		source: String(result.source),
+		target: String(result.target),
+		sourceHandle: String(
+			result.sourceHandle ?? result.source_handle ?? "output",
+		),
+		targetHandle: String(
+			result.targetHandle ?? result.target_handle ?? "input",
+		),
+		type: N8N_EDGE_TYPE,
+		animated: true,
+		data: { isGhost: true, pathStyle: "default" as const },
+		style: { ...GHOST_EDGE_STYLE },
+	};
+}
+
+export function appendMaterializedProposals(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	pathStyle: EdgePathStyle,
+	proposedNodes: Node<FlowNodeData>[],
+	proposedEdges: Edge[],
+): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+	const nextNodes = proposedNodes.map((node) => materializeComposerNode(node));
+	const nextEdges = proposedEdges.map((edge) =>
+		materializeComposerEdge(edge, pathStyle),
+	);
+	return {
+		nodes: [...nodes, ...nextNodes],
+		edges: normalizeCanvasEdges([...edges, ...nextEdges], pathStyle),
+	};
+}
+
+export function resolveUpstreamDataSourceId(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	targetNodeId: string,
+): string | null {
+	let current: string | null = targetNodeId;
+	const seen = new Set<string>();
+	while (current && !seen.has(current)) {
+		seen.add(current);
+		const node = nodes.find((item) => item.id === current);
+		if (isReaderNodeType(resolvedNodeType(node))) {
+			return current;
+		}
+		const incoming = edges.find((edge) => edge.target === current);
+		current = incoming?.source ?? null;
+	}
+	const directIn = edges.find((edge) => edge.target === targetNodeId);
+	if (directIn?.source) {
+		const walked = resolveUpstreamDataSourceId(
+			nodes,
+			edges,
+			directIn.source,
+		);
+		if (walked) return walked;
+		return directIn.source;
+	}
+	return resolveArchitectSourceNodeId(nodes, edges, null);
+}
+
+export function resolveArchitectSourceNodeId(
+	nodes: Node<FlowNodeData>[],
+	edges: Edge[],
+	selectedNodeId: string | null,
+): string | null {
+	if (selectedNodeId) {
+		const selected = nodes.find((node) => node.id === selectedNodeId);
+		if (selected) {
+			if (isReaderNodeType(resolvedNodeType(selected))) {
+				return selected.id;
+			}
+			const incoming = edges.find((edge) => edge.target === selectedNodeId);
+			if (incoming) {
+				return incoming.source;
+			}
+			return selectedNodeId;
+		}
+	}
+	const reader = nodes.find((node) =>
+		isReaderNodeType(resolvedNodeType(node)),
+	);
+	return reader?.id ?? selectedNodeId;
 }
 
 export function extractContextMentions(prompt: string): string[] {

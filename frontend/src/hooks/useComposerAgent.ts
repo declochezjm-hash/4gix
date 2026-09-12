@@ -322,6 +322,8 @@ export function useComposerAgent() {
 		messages,
 		proposedNodes,
 		proposedEdges,
+		setProposedNodes,
+		setProposedEdges,
 		error,
 	};
 }

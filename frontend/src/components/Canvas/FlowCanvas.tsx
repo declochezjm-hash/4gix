@@ -34,11 +34,15 @@ import { useComposerAgentContext } from "../agent/ComposerAgentContext";
 import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
 import { EdgeContextMenu } from "./EdgeContextMenu";
+import { DirectAgentNode } from "../nodes/DirectAgentNode";
 import { EtlNode } from "./EtlNode";
 import { N8nEdge } from "./N8nEdge";
 import { NodeContextMenu } from "./NodeContextMenu";
 
-const nodeTypes = { etl: EtlNode } as NodeTypes;
+const nodeTypes = {
+	etl: EtlNode,
+	direct_agent_processor: DirectAgentNode,
+} as NodeTypes;
 const edgeTypes = { n8nEdge: N8nEdge } as EdgeTypes;
 
 const FIT_VIEW_OPTIONS = {
@@ -87,6 +91,16 @@ function FlowCanvasInner() {
 	const nodes = useDagStore((s) => s.nodes);
 	const edges = useDagStore((s) => s.edges);
 	const { proposedNodes, proposedEdges } = useComposerAgentContext();
+	const stepProposalNodes = useDagStore((s) => s.stepProposalNodes);
+	const stepProposalEdges = useDagStore((s) => s.stepProposalEdges);
+	const mergedProposalNodes = useMemo(
+		() => [...stepProposalNodes, ...proposedNodes],
+		[stepProposalNodes, proposedNodes],
+	);
+	const mergedProposalEdges = useMemo(
+		() => [...stepProposalEdges, ...proposedEdges],
+		[stepProposalEdges, proposedEdges],
+	);
 	const canvasLocked = useDagStore((s) => s.canvasLocked);
 	const onNodesChange = useDagStore((s) => s.onNodesChange);
 	const onEdgesChange = useDagStore((s) => s.onEdgesChange);
@@ -117,14 +131,14 @@ function FlowCanvasInner() {
 			...node,
 			hidden: visibleIdSet ? !visibleIdSet.has(node.id) : false,
 		}));
-		const ghosts = proposedNodes.map((node) => ({
+		const ghosts = mergedProposalNodes.map((node) => ({
 			...node,
 			draggable: false,
 			selectable: false,
 			hidden: false,
 		}));
 		return [...base, ...ghosts];
-	}, [nodes, proposedNodes, visibleIdSet]);
+	}, [nodes, mergedProposalNodes, visibleIdSet]);
 
 	const realNodeIds = useMemo(
 		() => new Set(nodes.map((node) => node.id)),
@@ -180,7 +194,7 @@ function FlowCanvasInner() {
 				},
 			};
 		});
-		const ghosts = proposedEdges.map((edge) => ({
+		const ghosts = mergedProposalEdges.map((edge) => ({
 			...edge,
 			type: "n8nEdge",
 			hidden: false,
@@ -201,7 +215,7 @@ function FlowCanvasInner() {
 		return [...base, ...ghosts];
 	}, [
 		edges,
-		proposedEdges,
+		mergedProposalEdges,
 		visibleIdSet,
 		edgePathStyle,
 		lastExecution?.status,

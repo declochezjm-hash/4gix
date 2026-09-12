@@ -1,5 +1,14 @@
 import type { LucideIcon } from "lucide-react";
-import { Bot, Box, Globe, Image, Layers, Terminal, Wand2 } from "lucide-react";
+import {
+	Bot,
+	Box,
+	Globe,
+	Image,
+	Layers,
+	Sparkles,
+	Terminal,
+	Wand2,
+} from "lucide-react";
 import type { CatalogNode } from "./api";
 import { groupIdOf, type N8nGroupId } from "./n8nCatalog";
 
@@ -18,6 +27,7 @@ export {
 	UserCheck,
 	Wand2,
 	Zap,
+	Sparkles,
 } from "lucide-react";
 
 const GROUP_ICONS: Record<N8nGroupId, LucideIcon> = {
@@ -38,6 +48,12 @@ export function catalogEntryIcon(
 ): LucideIcon {
 	const type = entry.node_type || "";
 	if (type === "composer_agent") {
+		return Bot;
+	}
+	if (type === "direct_agent_processor") {
+		return Sparkles;
+	}
+	if (type === "auto_architect_agent") {
 		return Bot;
 	}
 	if (type === "python_caller" || type === "code_node") {

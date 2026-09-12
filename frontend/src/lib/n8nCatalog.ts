@@ -68,6 +68,8 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	python_caller: "data",
 	code_node: "data",
 	composer_agent: "ai",
+	direct_agent_processor: "ai",
+	auto_architect_agent: "ai",
 	geometry_validator: "gis",
 	geometry_filter: "gis",
 	snapper: "gis",
