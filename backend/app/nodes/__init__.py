@@ -114,7 +114,31 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
 }
 
 
+_NODE_TYPE_ALIASES: dict[str, str] = {
+    "shapefile_writer": "file_writer",
+    "geojson_writer": "file_writer",
+    "vector_writer": "file_writer",
+    "gpkg_writer": "file_writer",
+    "csv_writer": "file_writer",
+    "filter_transformer": "attribute_filter",
+    "filter": "attribute_filter",
+    "reprojector": "reproject",
+    "bufferer": "buffer",
+}
+
+
+def _normalize_node_type_key(node_type: str) -> str:
+    import re
+
+    key = (node_type or "").strip().replace("-", "_")
+    key = re.sub(r"([a-z])([A-Z])", r"\1_\2", key)
+    return key.lower()
+
+
 def get_node_class(node_type: str) -> Type[Base4GIxNode]:
+    node_type = _normalize_node_type_key(node_type)
+    if node_type in _NODE_TYPE_ALIASES:
+        node_type = _NODE_TYPE_ALIASES[node_type]
     if node_type == "code_node":
         return PythonCallerNode
     if node_type == "composer_agent":

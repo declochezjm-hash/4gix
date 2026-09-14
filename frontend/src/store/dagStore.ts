@@ -15,6 +15,8 @@ import { enrichCatalog } from "../config/nodeRegistry";
 import {
 	type CatalogNode,
 	type DataUploadResult,
+	deleteWorkflow as deleteWorkflowApi,
+	directProcessAgent,
 	downloadExportFmw,
 	type ExecutionResult,
 	type FlowNodeData,
@@ -29,22 +31,12 @@ import {
 	isShapefileZipFilename,
 	type MapViewState,
 	type NodeSnapshot,
-	deleteWorkflow as deleteWorkflowApi,
 	saveWorkflow,
 	uploadDataFile,
 	type WorkflowRecord,
-	directProcessAgent,
 	wsExecuteUrl,
 	zipLooksLikeShapefile,
 } from "../lib/api";
-import { SHAPEFILE_INCOMPLETE_CHAT_MESSAGE } from "../lib/shapefileGuidance";
-import { buildWorkflowExports } from "../lib/workspaceExport";
-import type { PendingWorkflowExport } from "../lib/workspaceExport";
-import {
-	graphForDirectProcess,
-	parseChatHistory,
-	type DirectChatTurn,
-} from "../lib/directProcess";
 import {
 	buildCanvasEdge,
 	type EdgePathStyle,
@@ -56,11 +48,24 @@ import {
 	computeComposerRemoveIds,
 } from "../lib/composerCanvas";
 import {
+	type DirectChatTurn,
+	graphForDirectProcess,
+	parseChatHistory,
+} from "../lib/directProcess";
+import { SHAPEFILE_INCOMPLETE_CHAT_MESSAGE } from "../lib/shapefileGuidance";
+import {
+	coerceCanvasNode,
+	normalizeImportedWorkflowDefinition,
+	parseWorkflowJsonDocument,
+} from "../lib/workflowImport";
+import {
 	layoutNodesByLayer,
 	PAGINATION_NODE_THRESHOLD,
 	positionsOverlapRatio,
 	splitWorkflowIntoPages,
 } from "../lib/workflowPagination";
+import type { PendingWorkflowExport } from "../lib/workspaceExport";
+import { buildWorkflowExports } from "../lib/workspaceExport";
 
 type NodeStatus = NonNullable<FlowNodeData["status"]>;
 
@@ -808,26 +813,30 @@ export const useDagStore = create<DagState>((set, get) => ({
 		const record = get().workflows.find((item) => item.id === id);
 		if (!record) return;
 		const definition = record.definition || {};
-		const nodes = ((definition.nodes || []) as Node<FlowNodeData>[]).map(
-			(node) => ({
-				...node,
-				type: reactFlowTypeForNode(node.data?.nodeType || "etl"),
-				data: {
-					...node.data,
-					status: "idle" as const,
-					durationMs: undefined,
-					error: null,
+		const normalized = normalizeImportedWorkflowDefinition(
+			(definition.nodes || []) as unknown[],
+			(definition.edges || []) as unknown[],
+			get().catalog,
+		);
+		const nodes = normalized.nodes.map((node, index) =>
+			coerceCanvasNode(
+				{
+					...node,
+					data: {
+						...node.data,
+						status: "idle",
+						durationMs: undefined,
+						error: null,
+					},
 				},
-			}),
+				index,
+			),
 		);
 		set({
 			workflowId: record.id,
 			workflowName: record.name,
 			nodes,
-			edges: normalizeCanvasEdges(
-				(definition.edges || []) as Edge[],
-				get().edgePathStyle,
-			),
+			edges: normalizeCanvasEdges(normalized.edges, get().edgePathStyle),
 			snapshots: {},
 			lastExecution: null,
 			selectedNodeId: null,
@@ -988,7 +997,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 		const { nodes, edges } = get();
 		if (!nodes.length) return;
 		set({
-			nodes: layoutNodesByLayer(nodes, edges),
+			nodes: layoutNodesByLayer(nodes, edges).map((node, index) =>
+				coerceCanvasNode(node, index),
+			),
 			contextMenu: null,
 			viewportFitRequest: bumpViewportFit(get),
 		});
@@ -1036,7 +1047,16 @@ export const useDagStore = create<DagState>((set, get) => ({
 		});
 	},
 
-	setAppView: (view) => set({ appView: view }),
+	setAppView: (view) => {
+		if (view === "editor" && get().nodes.length > 0) {
+			set({
+				appView: view,
+				viewportFitRequest: bumpViewportFit(get),
+			});
+			return;
+		}
+		set({ appView: view });
+	},
 
 	focusNodeOnCanvas: (nodeId) => {
 		const { canvasPages, nodes } = get();
@@ -1076,36 +1096,33 @@ export const useDagStore = create<DagState>((set, get) => ({
 
 	loadImportedDefinition: (payload) => {
 		const catalog = get().catalog;
-		const nodes = (payload.definition.nodes || []).map((raw) => {
-			const node = raw as Node<FlowNodeData>;
-			const entry = catalog.find(
-				(item) => item.node_type === node.data?.nodeType,
-			);
-			return {
-				...node,
-				type: "etl",
-				data: {
-					...node.data,
-					params: {
-						...(entry ? schemaDefaults(entry) : {}),
-						...(node.data?.params || {}),
+		const normalized = normalizeImportedWorkflowDefinition(
+			payload.definition.nodes || [],
+			payload.definition.edges || [],
+			catalog,
+		);
+		const nodes = normalized.nodes.map((node, index) =>
+			coerceCanvasNode(
+				{
+					...node,
+					data: {
+						...node.data,
+						status: "idle",
+						disabled: false,
+						durationMs: undefined,
+						error: null,
 					},
-					schema: node.data?.schema || entry?.schema,
-					inputHandles: node.data?.inputHandles ||
-						entry?.input_handles || ["input"],
-					outputHandles: node.data?.outputHandles ||
-						entry?.output_handles || ["output"],
-					status: "idle" as const,
-					disabled: false,
 				},
-			};
-		});
+				index,
+			),
+		);
+		const importWarnings = [
+			...(payload.warnings || []),
+			...normalized.warnings,
+		];
 		set({
 			nodes,
-			edges: normalizeCanvasEdges(
-				(payload.definition.edges || []) as Edge[],
-				get().edgePathStyle,
-			),
+			edges: normalizeCanvasEdges(normalized.edges, get().edgePathStyle),
 			workflowName: payload.name,
 			workflowId: null,
 			snapshots: {},
@@ -1113,37 +1130,57 @@ export const useDagStore = create<DagState>((set, get) => ({
 			selectedNodeId: null,
 			inspectorOpen: false,
 			nodePanelOpen: false,
+			stepProposalNodes: [],
+			stepProposalEdges: [],
+			appView: "editor",
+			canvasPaginationEnabled: false,
+			canvasPageIndex: 0,
 			error: null,
 			importNotice:
-				payload.warnings?.length > 0
-					? `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) · ${payload.warnings[0]}`
-					: `Import .fmw : ${nodes.length} nœud(s), ${(payload.definition.edges || []).length} lien(s) chargés.`,
+				importWarnings.length > 0
+					? `Import : ${nodes.length} nœud(s), ${normalized.edges.length} lien(s) · ${importWarnings[0]}`
+					: `Import : ${nodes.length} nœud(s), ${normalized.edges.length} lien(s) chargés.`,
 			viewportFitRequest: bumpViewportFit(get),
 		});
-		const state = get();
-		const overlap = positionsOverlapRatio(state.nodes);
-		if (state.nodes.length >= PAGINATION_NODE_THRESHOLD || overlap >= 0.25) {
-			get().tidyUpWorkflow();
-			if (state.nodes.length >= 50) {
+		try {
+			if (nodes.length > 0) {
+				get().tidyUpWorkflow();
+			}
+			get().rebuildCanvasPages();
+			const state = get();
+			const overlap = positionsOverlapRatio(state.nodes);
+			const weakPositions = state.nodes.some(
+				(node) =>
+					typeof node.position?.x !== "number" ||
+					typeof node.position?.y !== "number",
+			);
+			if (
+				state.nodes.length >= PAGINATION_NODE_THRESHOLD ||
+				overlap >= 0.25 ||
+				weakPositions
+			) {
+				get().tidyUpWorkflow();
+				get().rebuildCanvasPages();
+				if (state.nodes.length >= 50) {
+					set({
+						edgePathStyle: "smoothstep",
+						edges: normalizeCanvasEdges(get().edges, "smoothstep"),
+					});
+				}
+			}
+			if (state.nodes.length >= PAGINATION_NODE_THRESHOLD) {
+				set({ appView: "overview" });
+				const pageCount = get().canvasPages.length;
 				set({
-					edgePathStyle: "smoothstep",
-					edges: normalizeCanvasEdges(get().edges, "smoothstep"),
+					importNotice:
+						`${get().importNotice || ""} · Réorganisation automatique (${pageCount} page(s) max. ~26 nœuds)`.replace(
+							/^ · /,
+							"",
+						),
 				});
 			}
-		}
-		get().rebuildCanvasPages();
-		if (state.nodes.length >= PAGINATION_NODE_THRESHOLD) {
-			set({ appView: "overview" });
-		}
-		if (overlap >= 0.25 || state.nodes.length >= PAGINATION_NODE_THRESHOLD) {
-			const pageCount = get().canvasPages.length;
-			set({
-				importNotice:
-					`${get().importNotice || ""} · Réorganisation automatique (${pageCount} page(s) max. ~26 nœuds)`.replace(
-						/^ · /,
-						"",
-					),
-			});
+		} catch (postImportError) {
+			console.error("[4GIx] post-import layout", postImportError);
 		}
 	},
 
@@ -1171,8 +1208,40 @@ export const useDagStore = create<DagState>((set, get) => ({
 		}
 		if (isDataImportFilename(file.name)) {
 			if (lower.endsWith(".json")) {
-				const isGeo = await fileLooksLikeGeoJSON(file);
-				if (isGeo) {
+				const text = await file.text();
+				let parsed: unknown;
+				try {
+					parsed = JSON.parse(text) as unknown;
+				} catch {
+					set({ error: "Fichier JSON illisible ou syntaxe invalide." });
+					return;
+				}
+				const workflowDoc = parseWorkflowJsonDocument(parsed);
+				if (workflowDoc.nodes.length > 0) {
+					get().loadImportedDefinition({
+						name: workflowDoc.name || file.name.replace(/\.[^.]+$/, ""),
+						format: "4gix_dag",
+						source: "json_file",
+						warnings: workflowDoc.warnings || [],
+						definition: {
+							nodes: workflowDoc.nodes,
+							edges: workflowDoc.edges,
+						},
+					});
+					return;
+				}
+				const geoKind =
+					parsed &&
+					typeof parsed === "object" &&
+					"type" in parsed &&
+					typeof (parsed as { type?: unknown }).type === "string"
+						? (parsed as { type: string }).type
+						: "";
+				if (
+					geoKind === "FeatureCollection" ||
+					geoKind === "Feature" ||
+					geoKind === "Geometry"
+				) {
 					await get().importDataFileFromDrop(file);
 					return;
 				}
@@ -1189,20 +1258,17 @@ export const useDagStore = create<DagState>((set, get) => ({
 			return;
 		}
 		try {
-			const raw = JSON.parse(await file.text()) as {
-				name?: string;
-				nodes?: unknown[];
-				edges?: unknown[];
-				definition?: { nodes?: unknown[]; edges?: unknown[] };
-			};
+			const doc = parseWorkflowJsonDocument(
+				JSON.parse(await file.text()) as unknown,
+			);
 			const payload: FmwImportResult = {
-				name: raw.name || file.name.replace(/\.[^.]+$/, ""),
+				name: doc.name || file.name.replace(/\.[^.]+$/, ""),
 				format: "4gix_dag",
 				source: "json_file",
-				warnings: [],
+				warnings: doc.warnings || [],
 				definition: {
-					nodes: raw.definition?.nodes ?? raw.nodes ?? [],
-					edges: raw.definition?.edges ?? raw.edges ?? [],
+					nodes: doc.nodes,
+					edges: doc.edges,
 				},
 			};
 			if (!payload.definition.nodes.length) {
@@ -1529,9 +1595,7 @@ async function executeViaSocket(
 						running: false,
 						exportQueue,
 						exportModalOpen: exportQueue.length > 0,
-						error: failedRun
-							? result.error || "Échec d'exécution"
-							: null,
+						error: failedRun ? result.error || "Échec d'exécution" : null,
 						nodes: get().nodes.map((node) => {
 							const snap = snapshots[node.id];
 							if (!snap) return node;

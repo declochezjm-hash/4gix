@@ -1,0 +1,48 @@
+{
+  "name": "Exemple complet 4GIx",
+  "nodes": [
+    {
+      "id": "source_csv",
+      "type": "csv_reader",
+      "position": { "x": 0, "y": 0 },
+      "params": { "path": "/workspace/uploads/sample.csv" }
+    },
+    {
+      "id": "vertex_1",
+      "type": "vertex_creator",
+      "position": { "x": 0, "y": 0 },
+      "params": { "x_field": "X", "y_field": "Y" }
+    },
+    {
+      "id": "filter_led",
+      "type": "Filter_Transformer",
+      "position": { "x": 0, "y": 0 },
+      "params": { "field": "TYPE", "operator": "contains", "value": "LED" }
+    },
+    {
+      "id": "filter_lampe",
+      "type": "filter_transformer",
+      "position": { "x": 0, "y": 0 },
+      "params": { "field": "TYPE", "operator": "contains", "value": "LAMPE" }
+    },
+    {
+      "id": "writer_shp",
+      "type": "shapefile_writer",
+      "position": { "x": 0, "y": 0 },
+      "params": { "path": "/workspace/exports/out.shp" }
+    },
+    {
+      "id": "writer_geo",
+      "type": "geojson_writer",
+      "position": { "x": 0, "y": 0 },
+      "params": { "path": "/workspace/exports/out.geojson" }
+    }
+  ],
+  "edges": [
+    { "source": "source_csv", "target": "vertex_1" },
+    { "source": "vertex_1", "target": "filter_led" },
+    { "source": "vertex_1", "target": "filter_lampe" },
+    { "source": "filter_led", "target": "writer_shp" },
+    { "source": "filter_lampe", "target": "writer_geo" }
+  ]
+}

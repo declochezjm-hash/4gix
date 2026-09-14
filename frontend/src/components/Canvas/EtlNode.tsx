@@ -53,14 +53,16 @@ function statusLabel(payload: FlowNodeData): string {
 			? `Success · ${Math.round(payload.durationMs)} ms`
 			: "Success";
 	}
-	return payload.nodeType;
+	return "Idle";
 }
 
 export function EtlNode({ id, data, selected }: NodeProps) {
-	const payload = data as FlowNodeData;
+	const payload = (data || {}) as FlowNodeData;
+	const nodeType = payload.nodeType || "unknown_node";
+	const category = payload.category || "Transformer";
 	const chrome = nodeChrome({
-		nodeType: payload.nodeType,
-		category: payload.category,
+		nodeType,
+		category,
 	});
 	const openNodePanel = useDagStore((s) => s.openNodePanel);
 	const canvasLocked = useDagStore((s) => s.canvasLocked);
@@ -103,8 +105,8 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 				))}
 				<N8nIconBadge
 					icon={catalogEntryIcon({
-						node_type: payload.nodeType,
-						category: payload.category,
+						node_type: nodeType,
+						category,
 					})}
 					color={chrome.color}
 					size={16}

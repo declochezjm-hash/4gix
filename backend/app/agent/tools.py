@@ -82,7 +82,9 @@ NODE_TYPE_ALIASES: Dict[str, str] = {
     "code": "python_caller",
     "code_node": "python_caller",
     "filter": "attribute_filter",
+    "filter_transformer": "attribute_filter",
     "reproject": "reproject",
+    "reprojector": "reproject",
 }
 
 

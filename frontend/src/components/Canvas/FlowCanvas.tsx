@@ -20,6 +20,7 @@ import {
 	useMemo,
 	useState,
 } from "react";
+import { useCanvasViewportSize } from "../../hooks/useCanvasViewportSize";
 import { canvasDotsColor, readColorTheme } from "../../lib/theme";
 import "@xyflow/react/dist/style.css";
 
@@ -29,12 +30,14 @@ import {
 	isDataImportFilename,
 	isFmwFilename,
 } from "../../lib/api";
+import { coerceCanvasNode } from "../../lib/workflowImport";
 import { useDagStore } from "../../store/dagStore";
 import { useComposerAgentContext } from "../agent/ComposerAgentContext";
+import { DirectAgentNode } from "../nodes/DirectAgentNode";
+import { CanvasErrorBoundary } from "./CanvasErrorBoundary";
 import { CanvasPageNav } from "./CanvasPageNav";
 import { CanvasViewControls } from "./CanvasViewControls";
 import { EdgeContextMenu } from "./EdgeContextMenu";
-import { DirectAgentNode } from "../nodes/DirectAgentNode";
 import { EtlNode } from "./EtlNode";
 import { N8nEdge } from "./N8nEdge";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -88,6 +91,7 @@ function CanvasViewportSync() {
 }
 
 function FlowCanvasInner() {
+	const { hostRef, size: flowHostSize } = useCanvasViewportSize();
 	const nodes = useDagStore((s) => s.nodes);
 	const edges = useDagStore((s) => s.edges);
 	const { proposedNodes, proposedEdges } = useComposerAgentContext();
@@ -123,16 +127,23 @@ function FlowCanvasInner() {
 
 	const visibleIdSet = useMemo(() => {
 		if (!canvasPaginationEnabled || !canvasPages.length) return null;
-		return new Set(canvasPages[canvasPageIndex] ?? []);
+		const pageIds = canvasPages[canvasPageIndex] ?? [];
+		if (!pageIds.length) return null;
+		return new Set(pageIds);
 	}, [canvasPaginationEnabled, canvasPages, canvasPageIndex]);
 
 	const displayNodes = useMemo(() => {
-		const base = nodes.map((node) => ({
-			...node,
-			hidden: visibleIdSet ? !visibleIdSet.has(node.id) : false,
-		}));
-		const ghosts = mergedProposalNodes.map((node) => ({
-			...node,
+		const base = nodes
+			.filter((node) => Boolean(node?.id))
+			.map((node, index) => {
+				const safe = coerceCanvasNode(node, index);
+				return {
+					...safe,
+					hidden: visibleIdSet ? !visibleIdSet.has(safe.id) : false,
+				};
+			});
+		const ghosts = mergedProposalNodes.map((node, index) => ({
+			...coerceCanvasNode(node, nodes.length + index),
 			draggable: false,
 			selectable: false,
 			hidden: false,
@@ -226,6 +237,7 @@ function FlowCanvasInner() {
 		x: number;
 		y: number;
 	} | null>(null);
+	const [canvasRenderKey, setCanvasRenderKey] = useState(0);
 	const [dotColor, setDotColor] = useState(() =>
 		canvasDotsColor(readColorTheme()),
 	);
@@ -344,6 +356,11 @@ function FlowCanvasInner() {
 		[openNodePanel],
 	);
 
+	const flowStyle = {
+		width: flowHostSize.width,
+		height: flowHostSize.height,
+	};
+
 	return (
 		<div
 			className="canvas-shell"
@@ -352,68 +369,83 @@ function FlowCanvasInner() {
 			onDragOver={(event) => event.preventDefault()}
 			onDrop={onDrop}
 		>
-			<ReactFlow
-				nodes={displayNodes}
-				edges={displayEdges}
-				onNodesChange={onDisplayNodesChange}
-				onEdgesChange={onDisplayEdgesChange}
-				onConnect={onConnect}
-				isValidConnection={isValidConnection}
-				onReconnect={onReconnect}
-				onReconnectEnd={onReconnectEnd}
-				onConnectEnd={onConnectEnd}
-				connectionLineType={connectionLineType}
-				connectionRadius={28}
-				reconnectRadius={22}
-				deleteKeyCode={["Delete", "Backspace"]}
-				edgesFocusable
-				edgesReconnectable={!canvasLocked}
-				onEdgeContextMenu={(event, edge) => {
-					event.preventDefault();
-					setEdgeMenu({
-						edgeId: edge.id,
-						x: event.clientX,
-						y: event.clientY,
-					});
-					closeContextMenu();
-				}}
-				onNodeClick={(_, node) => {
-					selectNode(node.id);
-					closeContextMenu();
-					setEdgeMenu(null);
-				}}
-				onNodeDoubleClick={(_, node) => openInspector(node.id)}
-				onPaneClick={() => {
-					selectNode(null);
-					closeNodePanel();
-					closeContextMenu();
-					setEdgeMenu(null);
-				}}
-				nodeTypes={nodeTypes}
-				edgeTypes={edgeTypes}
-				nodesDraggable={!canvasLocked}
-				nodesConnectable={!canvasLocked}
-				elementsSelectable={!canvasLocked}
-				minZoom={0.02}
-				maxZoom={2}
-				elevateEdgesOnSelect
-				elevateNodesOnSelect
-				defaultEdgeOptions={defaultEdgeOptions}
-				connectionLineStyle={{ stroke: "#52525B", strokeWidth: 2.5 }}
-			>
-				<CanvasViewportSync />
-				<Background
-					id="n8n-dots"
-					variant={BackgroundVariant.Dots}
-					gap={22}
-					size={1.15}
-					color={dotColor}
-				/>
-				<CanvasViewControls
-					locked={canvasLocked}
-					onToggleLock={() => setCanvasLocked(!canvasLocked)}
-				/>
-			</ReactFlow>
+			<div className="canvas-shell__flow">
+				<CanvasErrorBoundary
+					className="canvas-shell__flow-boundary"
+					onReset={() => setCanvasRenderKey((key) => key + 1)}
+				>
+					<div
+						ref={hostRef}
+						className="canvas-shell__rf-host"
+						style={flowStyle}
+					>
+						<ReactFlow
+							key={`${canvasRenderKey}-${flowHostSize.width}x${flowHostSize.height}`}
+							style={flowStyle}
+							nodes={displayNodes}
+							edges={displayEdges}
+							onNodesChange={onDisplayNodesChange}
+							onEdgesChange={onDisplayEdgesChange}
+							onConnect={onConnect}
+							isValidConnection={isValidConnection}
+							onReconnect={onReconnect}
+							onReconnectEnd={onReconnectEnd}
+							onConnectEnd={onConnectEnd}
+							connectionLineType={connectionLineType}
+							connectionRadius={28}
+							reconnectRadius={22}
+							deleteKeyCode={["Delete", "Backspace"]}
+							edgesFocusable
+							edgesReconnectable={!canvasLocked}
+							onEdgeContextMenu={(event, edge) => {
+								event.preventDefault();
+								setEdgeMenu({
+									edgeId: edge.id,
+									x: event.clientX,
+									y: event.clientY,
+								});
+								closeContextMenu();
+							}}
+							onNodeClick={(_, node) => {
+								selectNode(node.id);
+								closeContextMenu();
+								setEdgeMenu(null);
+							}}
+							onNodeDoubleClick={(_, node) => openInspector(node.id)}
+							onPaneClick={() => {
+								selectNode(null);
+								closeNodePanel();
+								closeContextMenu();
+								setEdgeMenu(null);
+							}}
+							nodeTypes={nodeTypes}
+							edgeTypes={edgeTypes}
+							nodesDraggable={!canvasLocked}
+							nodesConnectable={!canvasLocked}
+							elementsSelectable={!canvasLocked}
+							minZoom={0.02}
+							maxZoom={2}
+							elevateEdgesOnSelect
+							elevateNodesOnSelect
+							defaultEdgeOptions={defaultEdgeOptions}
+							connectionLineStyle={{ stroke: "#52525B", strokeWidth: 2.5 }}
+						>
+							<CanvasViewportSync />
+							<Background
+								id="n8n-dots"
+								variant={BackgroundVariant.Dots}
+								gap={22}
+								size={1.15}
+								color={dotColor}
+							/>
+							<CanvasViewControls
+								locked={canvasLocked}
+								onToggleLock={() => setCanvasLocked(!canvasLocked)}
+							/>
+						</ReactFlow>
+					</div>
+				</CanvasErrorBoundary>
+			</div>
 			{edgeMenu ? (
 				<EdgeContextMenu
 					edgeId={edgeMenu.edgeId}

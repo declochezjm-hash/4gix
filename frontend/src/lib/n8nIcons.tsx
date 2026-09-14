@@ -7,6 +7,7 @@ import {
 	Layers,
 	Sparkles,
 	Terminal,
+	UserCheck,
 	Wand2,
 } from "lucide-react";
 import type { CatalogNode } from "./api";
@@ -37,6 +38,7 @@ const GROUP_ICONS: Record<N8nGroupId, LucideIcon> = {
 	bim: Box,
 	raster: Image,
 	io: Globe,
+	hitl: UserCheck,
 };
 
 export function groupLucideIcon(groupId: N8nGroupId): LucideIcon {
@@ -44,9 +46,15 @@ export function groupLucideIcon(groupId: N8nGroupId): LucideIcon {
 }
 
 export function catalogEntryIcon(
-	entry: Pick<CatalogNode, "node_type" | "category">,
+	entry: Pick<CatalogNode, "node_type" | "category"> | null | undefined,
 ): LucideIcon {
-	const type = entry.node_type || "";
+	const safe = entry ?? { node_type: "unknown_node", category: "Transformer" };
+	const type =
+		safe.node_type != null ? String(safe.node_type).trim() : "unknown_node";
+	const iconEntry = {
+		node_type: type || "unknown_node",
+		category: safe.category ?? "Transformer",
+	};
 	if (type === "composer_agent") {
 		return Bot;
 	}
@@ -59,7 +67,7 @@ export function catalogEntryIcon(
 	if (type === "python_caller" || type === "code_node") {
 		return Terminal;
 	}
-	return groupLucideIcon(groupIdOf(entry));
+	return groupLucideIcon(groupIdOf(iconEntry));
 }
 
 type N8nIconBadgeProps = {

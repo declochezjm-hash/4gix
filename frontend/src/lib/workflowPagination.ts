@@ -46,10 +46,13 @@ export function topologicalLayerMap(
 /** Détecte les imports FME où beaucoup de nœuds partagent la même position. */
 export function positionsOverlapRatio(nodes: Node<FlowNodeData>[]): number {
 	if (nodes.length < 2) return 0;
-	const keys = nodes.map(
-		(node) =>
-			`${Math.round(node.position.x / 8)}:${Math.round(node.position.y / 8)}`,
-	);
+	const keys = nodes.map((node) => {
+		const x =
+			typeof node.position?.x === "number" ? node.position.x : 0;
+		const y =
+			typeof node.position?.y === "number" ? node.position.y : 0;
+		return `${Math.round(x / 8)}:${Math.round(y / 8)}`;
+	});
 	return 1 - new Set(keys).size / nodes.length;
 }
 

@@ -1,6 +1,22 @@
 import type { CatalogNode } from "./api";
 
-export type N8nGroupId = "ai" | "data" | "gis" | "bim" | "raster" | "io";
+export type N8nGroupId =
+	| "ai"
+	| "data"
+	| "gis"
+	| "bim"
+	| "raster"
+	| "io"
+	| "hitl";
+
+const HITL_PREFIX = "connector_";
+
+function isHitlNode(nodeType: string | undefined | null): boolean {
+	if (nodeType === "human_approval") return true;
+	return Boolean(
+		typeof nodeType === "string" && nodeType.startsWith(HITL_PREFIX),
+	);
+}
 
 export type N8nGroup = {
 	id: N8nGroupId;
@@ -53,6 +69,14 @@ export const N8N_GROUPS: N8nGroup[] = [
 		description:
 			"Excel, CSV, GeoPackage, GeoJSON, KML, DXF, Shapefile, PostGIS.",
 		color: "#22C55E",
+	},
+	{
+		id: "hitl",
+		title: "Human in the loop",
+		shortTitle: "Human in the loop",
+		description:
+			"Validation humaine, approbations et connecteurs d'intégration.",
+		color: "#EC4899",
 	},
 ];
 
@@ -110,9 +134,15 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 };
 
 export function groupIdOf(
-	entry: Pick<CatalogNode, "node_type" | "category">,
+	entry: Pick<CatalogNode, "node_type" | "category"> | null | undefined,
 ): N8nGroupId {
-	if (TYPE_GROUP[entry.node_type]) return TYPE_GROUP[entry.node_type];
+	if (!entry) return "data";
+	const nodeType =
+		entry.node_type != null && String(entry.node_type).trim()
+			? String(entry.node_type).trim()
+			: "";
+	if (nodeType && TYPE_GROUP[nodeType]) return TYPE_GROUP[nodeType];
+	if (isHitlNode(nodeType || undefined)) return "hitl";
 	if (entry.category === "Reader" || entry.category === "Writer") return "io";
 	return "data";
 }
@@ -126,11 +156,16 @@ export function nodeChrome(entry: {
 	node_type?: string;
 	category: string;
 }): N8nGroup {
-	const nodeType = entry.nodeType || entry.node_type || "";
+	const nodeType =
+		entry.nodeType != null && String(entry.nodeType).trim()
+			? String(entry.nodeType).trim()
+			: entry.node_type != null && String(entry.node_type).trim()
+				? String(entry.node_type).trim()
+				: "unknown_node";
 	const group = groupMeta(
 		groupIdOf({
 			node_type: nodeType,
-			category: entry.category as CatalogNode["category"],
+			category: (entry.category || "Transformer") as CatalogNode["category"],
 		}),
 	);
 	return group;

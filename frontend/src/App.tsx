@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ComposerAgentProvider } from "./components/agent/ComposerAgentContext";
 import { ComposerDrawer } from "./components/agent/ComposerDrawer";
 import { ShapefileHealBridge } from "./components/agent/ShapefileHealBridge";
+import { CanvasErrorBoundary } from "./components/Canvas/CanvasErrorBoundary";
 import { FlowCanvas } from "./components/Canvas/FlowCanvas";
 import { NodePanelRight } from "./components/Canvas/NodePanelRight";
 import { TopBar } from "./components/Header/TopBar";
@@ -106,11 +107,12 @@ export default function App() {
 				<WorkflowExportModal />
 				<TopBar />
 				{appView === "overview" ? (
-					<ProjectOverview />
+					<ProjectOverview key="overview" />
 				) : (
-					<ComposerAgentProvider>
+					<CanvasErrorBoundary className="workspace workspace--error-fallback">
+						<ComposerAgentProvider>
 						<div
-							className={`workspace${fmwDragOver ? " workspace--fmw-drop" : ""}`}
+							className={`workspace__editor${fmwDragOver ? " workspace--fmw-drop" : ""}`}
 							onDragOver={(event) => {
 								if (!event.dataTransfer.types.includes("Files")) return;
 								event.preventDefault();
@@ -141,7 +143,8 @@ export default function App() {
 								<ComposerDrawer />
 							</main>
 						</div>
-					</ComposerAgentProvider>
+						</ComposerAgentProvider>
+					</CanvasErrorBoundary>
 				)}
 			</div>
 		</div>

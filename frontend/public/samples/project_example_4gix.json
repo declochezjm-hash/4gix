@@ -1,0 +1,81 @@
+{
+  "name": "Exemple pipeline 4GIx (6 nœuds)",
+  "nodes": [
+    {
+      "id": "csv_reader-1",
+      "type": "csv_reader",
+      "position": { "x": 80, "y": 120 },
+      "params": { "path": "/workspace/uploads/sample.csv" }
+    },
+    {
+      "id": "vertex_creator-1",
+      "type": "vertex_creator",
+      "position": { "x": 380, "y": 120 },
+      "params": {
+        "x_field": "X",
+        "y_field": "Y",
+        "target_crs": "EPSG:4326"
+      }
+    },
+    {
+      "id": "attribute_filter-1",
+      "type": "attribute_filter",
+      "position": { "x": 680, "y": 80 },
+      "params": {
+        "field": "TYPE_SOURCE",
+        "operator": "contains",
+        "value": "LED"
+      }
+    },
+    {
+      "id": "attribute_filter-2",
+      "type": "attribute_filter",
+      "position": { "x": 680, "y": 200 },
+      "params": {
+        "field": "TYPE_SOURCE",
+        "operator": "contains",
+        "value": "LAMPE"
+      }
+    },
+    {
+      "id": "shapefile_writer-1",
+      "type": "shapefile_writer",
+      "position": { "x": 980, "y": 80 },
+      "params": {
+        "path": "/workspace/exports/led.shp",
+        "driver": "ESRI Shapefile"
+      }
+    },
+    {
+      "id": "geojson_writer-1",
+      "type": "geojson_writer",
+      "position": { "x": 980, "y": 200 },
+      "params": {
+        "path": "/workspace/exports/lampe.geojson",
+        "driver": "GeoJSON"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "csv_reader-1",
+      "target": "vertex_creator-1"
+    },
+    {
+      "source": "vertex_creator-1",
+      "target": "attribute_filter-1"
+    },
+    {
+      "source": "vertex_creator-1",
+      "target": "attribute_filter-2"
+    },
+    {
+      "source": "attribute_filter-1",
+      "target": "shapefile_writer-1"
+    },
+    {
+      "source": "attribute_filter-2",
+      "target": "geojson_writer-1"
+    }
+  ]
+}
