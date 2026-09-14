@@ -76,6 +76,7 @@ export type MapViewState = {
 export type FlowNodeData = {
 	label: string;
 	nodeType: string;
+	requestedNodeType?: string;
 	category: NodeCategory;
 	isSpatial: boolean;
 	params: Record<string, unknown>;
@@ -100,7 +101,7 @@ export type FlowNodeData = {
 	inputSnapshot?: unknown;
 };
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+export const API_BASE = import.meta.env.VITE_API_URL || "";
 
 const STEP_ARCHITECT_TIMEOUT_MS = 90_000;
 

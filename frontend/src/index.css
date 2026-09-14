@@ -749,6 +749,86 @@ body {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
+.output-path-field__row {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+}
+.output-path-field__row input {
+	flex: 1;
+}
+.export-download-banner {
+	margin: 0.75rem 0.75rem 0;
+	padding: 0.75rem;
+	border: 1px solid #22c55e55;
+	border-radius: 8px;
+	background: #22c55e12;
+}
+.export-download-banner__actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.5rem;
+	flex-wrap: wrap;
+}
+.export-download-banner__error {
+	color: #ef4444;
+}
+.workflow-export-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 12000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.55);
+	padding: 1rem;
+}
+.workflow-export-modal__card {
+	width: min(520px, 100%);
+	background: var(--panel-bg, #1a1d24);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 1.25rem;
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+.workflow-export-modal__card header h2 {
+	margin: 0 0 0.35rem;
+	font-size: 1.15rem;
+}
+.workflow-export-modal__card header p {
+	margin: 0;
+	color: var(--muted, #9ca3af);
+	font-size: 0.9rem;
+}
+.workflow-export-modal__list {
+	list-style: none;
+	margin: 1rem 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+.workflow-export-modal__list li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.workflow-export-modal__list small {
+	display: block;
+	color: var(--muted, #9ca3af);
+}
+.workflow-export-modal__error {
+	color: #ef4444;
+	font-size: 0.85rem;
+}
+.workflow-export-modal__card footer {
+	display: flex;
+	justify-content: flex-end;
+}
 .workflow-name {
 	background: var(--input-bg);
 	border: 1px solid var(--line);

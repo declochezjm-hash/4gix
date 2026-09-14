@@ -8,6 +8,7 @@ import pandas as pd
 from shapely.geometry import Point
 
 from app.core.config import settings
+from app.core.crs import normalize_crs
 from app.core.readers.tabular import find_xy_columns
 from app.nodes.base import Base4GIxNode, _as_feature_collection, unwrap_input_data
 
@@ -17,7 +18,10 @@ class FileWriter(Base4GIxNode):
     category = "Writer"
     is_spatial = True
     label = "File Writer"
-    description = "Écrit le résultat vers GeoJSON, GeoPackage ou CSV."
+    description = (
+        "Écrit le résultat sur le serveur puis propose le téléchargement "
+        "(emplacement et nom choisis dans le navigateur)."
+    )
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
@@ -27,13 +31,24 @@ class FileWriter(Base4GIxNode):
             "properties": {
                 "path": {
                     "type": "string",
-                    "title": "Chemin de sortie",
-                    "default": "/workspace/output.geojson",
+                    "title": "Fichier de sortie",
+                    "format": "output_path",
+                    "description": (
+                        "Nom du fichier produit. Utilisez « Parcourir… » pour "
+                        "choisir l'emplacement et le nom avant l'exécution."
+                    ),
+                    "default": "/workspace/exports/output.geojson",
                 },
                 "driver": {
                     "type": "string",
                     "title": "Format",
-                    "enum": ["GeoJSON", "GPKG", "CSV"],
+                    "enum": ["GeoJSON", "GPKG", "CSV", "ESRI Shapefile"],
+                    "enumNames": [
+                        "GeoJSON",
+                        "GeoPackage",
+                        "CSV",
+                        "Shapefile (.shp)",
+                    ],
                     "default": "GeoJSON",
                 },
             },
@@ -54,7 +69,11 @@ class FileWriter(Base4GIxNode):
         driver = params.get("driver") or "GeoJSON"
 
         features = fc.get("features") or []
-        gdf = gpd.GeoDataFrame.from_features(features)
+        crs_value = normalize_crs(params.get("crs") or fc.get("crs"))
+        gdf = gpd.GeoDataFrame.from_features(
+            features,
+            crs=crs_value if features else None,
+        )
         if (
             len(gdf) > 0
             and (
@@ -97,14 +116,25 @@ class FileWriter(Base4GIxNode):
             df.to_csv(path, index=False)
         else:
             if gdf.crs is None:
-                gdf = gdf.set_crs(fc.get("crs") or "EPSG:4326")
+                gdf = gdf.set_crs(crs_value)
+            else:
+                gdf = gdf.set_crs(normalize_crs(gdf.crs))
             gdf.to_file(path, driver=driver)
+
+        workspace_root = Path(settings.workspace_dir).resolve()
+        try:
+            rel = path.resolve().relative_to(workspace_root)
+            logical_path = f"/workspace/{rel.as_posix()}"
+        except ValueError:
+            logical_path = str(path)
 
         return {
             "data": fc,
             "metadata": {
                 "written": len(gdf),
-                "path": str(path),
+                "path": logical_path,
+                "workspace_path": logical_path,
                 "driver": driver,
+                "download_ready": True,
             },
         }

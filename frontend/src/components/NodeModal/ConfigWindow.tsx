@@ -7,6 +7,7 @@ import { DirectAgentChatPanel } from "../agent/DirectAgentChatPanel";
 import { resolveInspector } from "./inspectorRegistry";
 import { AttributeManagerConfig } from "./AttributeManagerConfig";
 import { CodeEditorParam } from "./CodeEditorParam";
+import { pickExportDestination } from "../../lib/workspaceExport";
 import { defaultCodeForLanguage } from "./codeTemplates";
 import type { InspectorConfigTab } from "./configTabs";
 import { NodeHelpPane } from "./NodeHelpPane";
@@ -51,14 +52,45 @@ function Field({
 	prop,
 	value,
 	onChange,
+	nodeId,
+	allParams,
 }: {
 	name: string;
 	prop: SchemaProperty;
 	value: unknown;
 	onChange: (name: string, value: unknown) => void;
+	nodeId?: string;
+	allParams?: Record<string, unknown>;
 }) {
 	const title = prop.title || name;
 	const format = prop.format || "";
+
+	if (format === "output_path" && nodeId) {
+		const current = String(value ?? prop.default ?? "");
+		return (
+			<div className="output-path-field">
+				<span>{title}</span>
+				{prop.description ? <small>{prop.description}</small> : null}
+				<div className="output-path-field__row">
+					<input type="text" value={current} readOnly />
+					<button
+						type="button"
+						className="ghost-btn"
+						onClick={() => {
+							void pickExportDestination(nodeId, {
+								driver: String(allParams?.driver ?? ""),
+								currentPath: current,
+							})
+								.then((path) => onChange(name, path))
+								.catch(() => undefined);
+						}}
+					>
+						Parcourir…
+					</button>
+				</div>
+			</div>
+		);
+	}
 
 	if (format === "epsg") {
 		const current = String(value ?? prop.default ?? "EPSG:4326");
@@ -434,6 +466,8 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 								name={name}
 								prop={prop}
 								value={node.data.params[name]}
+								nodeId={node.id}
+								allParams={node.data.params}
 								onChange={(key, value) =>
 									updateNodeParams(node.id, { [key]: value })
 								}

@@ -9,6 +9,8 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.core.crs import normalize_crs
+
 from app.agent.geometry_healing import (
     build_proactive_suggestions,
     enrich_inspect_geometry_flags,
@@ -1598,7 +1600,7 @@ def plan_composer(
             )
         )
     elif target_crs:
-        source_crs = inspect_result.get("crs") or "EPSG:4326"
+        source_crs = normalize_crs(inspect_result.get("crs"))
         events.append(
             _event(
                 "thought",
@@ -1618,7 +1620,7 @@ def plan_composer(
             "node_type": "reprojector",
             "position": {"x": origin["x"], "y": origin["y"]},
             "config": {
-                "source_crs": source_crs if str(source_crs).upper().startswith("EPSG") else "EPSG:4326",
+                "source_crs": source_crs,
                 "target_crs": target_crs,
             },
         }

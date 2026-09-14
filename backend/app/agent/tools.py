@@ -170,7 +170,7 @@ def writer_config_for(requested_type: str, config: Dict[str, Any]) -> Dict[str, 
         params.setdefault("path", "/workspace/output.csv")
     elif requested in {"shapefile_writer", "vector_writer"}:
         params.setdefault("driver", "ESRI Shapefile")
-        params.setdefault("path", "/workspace/output.shp")
+        params.setdefault("path", "/workspace/exports/output.shp")
     return params
 
 
@@ -219,14 +219,15 @@ def _as_feature_collection(payload: Any, depth: int = 0) -> Dict[str, Any]:
 def _crs_from_payload(payload: Any) -> Optional[str]:
     if not isinstance(payload, dict):
         return None
+    from app.core.crs import crs_from_geojson_dict, normalize_crs
+
     crs = payload.get("crs")
     if isinstance(crs, str) and crs.strip():
-        return crs
+        return normalize_crs(crs)
     if isinstance(crs, dict):
-        props = crs.get("properties") or {}
-        name = props.get("name") or crs.get("name")
+        name = crs_from_geojson_dict(crs)
         if name:
-            return str(name)
+            return normalize_crs(name)
     meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
     for key in ("crs", "epsg", "srid"):
         if meta.get(key):

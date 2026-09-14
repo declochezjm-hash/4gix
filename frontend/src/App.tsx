@@ -9,6 +9,7 @@ import { NodeModal } from "./components/NodeModal/NodeModal";
 import { AppSidebar } from "./components/Shell/AppSidebar";
 import { ProjectOverview } from "./components/Shell/ProjectOverview";
 import { isFmwFilename } from "./lib/api";
+import { WorkflowExportModal } from "./components/export/WorkflowExportModal";
 import { useDagStore } from "./store/dagStore";
 
 export default function App() {
@@ -102,6 +103,7 @@ export default function App() {
 		<div className="app-shell">
 			<AppSidebar />
 			<div className="app-main">
+				<WorkflowExportModal />
 				<TopBar />
 				{appView === "overview" ? (
 					<ProjectOverview />

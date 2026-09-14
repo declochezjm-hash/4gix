@@ -38,6 +38,8 @@ import {
 	zipLooksLikeShapefile,
 } from "../lib/api";
 import { SHAPEFILE_INCOMPLETE_CHAT_MESSAGE } from "../lib/shapefileGuidance";
+import { buildWorkflowExports } from "../lib/workspaceExport";
+import type { PendingWorkflowExport } from "../lib/workspaceExport";
 import {
 	graphForDirectProcess,
 	parseChatHistory,
@@ -207,6 +209,9 @@ type DagState = {
 	shapefileProactivePrompt: string | null;
 	queueShapefileProactivePrompt: (message: string) => void;
 	clearShapefileProactivePrompt: () => void;
+	exportQueue: PendingWorkflowExport[];
+	exportModalOpen: boolean;
+	closeExportModal: () => void;
 };
 
 function schemaDefaults(entry: CatalogNode): Record<string, unknown> {
@@ -398,6 +403,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 	mapView: null,
 	composerDrawerOpen: false,
 	shapefileProactivePrompt: null,
+	exportQueue: [],
+	exportModalOpen: false,
+	closeExportModal: () => set({ exportModalOpen: false, exportQueue: [] }),
 	stepProposalNodes: [],
 	stepProposalEdges: [],
 	isArchitectGenerating: false,
@@ -1442,6 +1450,8 @@ async function executeViaSocket(
 	set({
 		running: true,
 		error: null,
+		exportModalOpen: false,
+		exportQueue: [],
 		mapView: null,
 		nodes: get().nodes.map((node) =>
 			targetIds.has(node.id)
@@ -1508,14 +1518,20 @@ async function executeViaSocket(
 					for (const snapshot of result.snapshots || []) {
 						snapshots[snapshot.node_id] = snapshot;
 					}
+					const failedRun =
+						result.status === "FAILED" || result.status === "error";
+					const exportQueue = failedRun
+						? []
+						: buildWorkflowExports(get().nodes, snapshots);
 					set({
 						lastExecution: result,
 						snapshots,
 						running: false,
-						error:
-							result.status === "FAILED" || result.status === "error"
-								? result.error || "Échec d'exécution"
-								: null,
+						exportQueue,
+						exportModalOpen: exportQueue.length > 0,
+						error: failedRun
+							? result.error || "Échec d'exécution"
+							: null,
 						nodes: get().nodes.map((node) => {
 							const snap = snapshots[node.id];
 							if (!snap) return node;
