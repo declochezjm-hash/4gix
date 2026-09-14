@@ -9,6 +9,8 @@ import { AttributeManagerConfig } from "./AttributeManagerConfig";
 import { CodeEditorParam } from "./CodeEditorParam";
 import { defaultCodeForLanguage } from "./codeTemplates";
 import type { InspectorConfigTab } from "./configTabs";
+import { isSchemaFieldVisible } from "../../lib/schemaFieldVisibility";
+import { CredentialField } from "./CredentialField";
 import { NodeHelpPane } from "./NodeHelpPane";
 
 function isCodeNodeType(nodeType: string): boolean {
@@ -59,6 +61,18 @@ function Field({
 }) {
 	const title = prop.title || name;
 	const format = prop.format || "";
+
+	if (format === "credential") {
+		return (
+			<CredentialField
+				title={title}
+				description={prop.description}
+				credentialType={prop.credentialType || "integration"}
+				value={value}
+				onChange={(credentialId) => onChange(name, credentialId)}
+			/>
+		);
+	}
 
 	if (format === "epsg") {
 		const current = String(value ?? prop.default ?? "EPSG:4326");
@@ -286,6 +300,24 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 			node?.data.schema?.properties || catalogEntry?.schema.properties || {},
 		[node, catalogEntry],
 	);
+	const effectiveParams = useMemo(() => {
+		if (!node) return {};
+		const params: Record<string, unknown> = { ...node.data.params };
+		for (const [key, prop] of Object.entries(properties)) {
+			if (params[key] === undefined && prop.default !== undefined) {
+				params[key] = prop.default;
+			}
+		}
+		return params;
+	}, [node, properties]);
+
+	const visiblePropertyEntries = useMemo(
+		() =>
+			Object.entries(properties).filter(([, prop]) =>
+				isSchemaFieldVisible(prop, effectiveParams),
+			),
+		[properties, effectiveParams],
+	);
 
 	if (!node) {
 		return (
@@ -423,12 +455,12 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 				/>
 			) : tab === "parameters" ? (
 				<form className="config-form" onSubmit={(e) => e.preventDefault()}>
-					{Object.keys(properties).length === 0 ? (
+					{visiblePropertyEntries.length === 0 ? (
 						<div className="empty">
 							Aucun paramètre exposé par get_schema().
 						</div>
 					) : (
-						Object.entries(properties).map(([name, prop]) => (
+						visiblePropertyEntries.map(([name, prop]) => (
 							<Field
 								key={name}
 								name={name}

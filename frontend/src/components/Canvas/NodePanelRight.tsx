@@ -4,9 +4,26 @@ import { groupCatalog, type N8nGroupId } from "../../lib/n8nCatalog";
 import { ArrowLeft, Search } from "../../lib/n8nIcons";
 import { useDagStore } from "../../store/dagStore";
 import { NodePanelCategoryAccordion } from "./NodePanelCategoryAccordion";
+import { NodePanelGroupDrilldown } from "./NodePanelGroupDrilldown";
+
+const DRILL_DOWN_GROUPS: N8nGroupId[] = ["hitl"];
+
+function isGroupExpanded(
+	groupId: N8nGroupId,
+	nodeCount: number,
+	searching: boolean,
+	userExpanded: readonly N8nGroupId[],
+): boolean {
+	if (nodeCount === 0) return false;
+	if (searching) return true;
+	return userExpanded.includes(groupId);
+}
 
 export function NodePanelRight() {
 	const open = useDagStore((s) => s.nodePanelOpen);
+	const nodePanelEpoch = useDagStore((s) => s.nodePanelEpoch);
+	const userExpanded = useDagStore((s) => s.nodePanelExpandedGroups);
+	const toggleNodePanelGroup = useDagStore((s) => s.toggleNodePanelGroup);
 	const closeNodePanel = useDagStore((s) => s.closeNodePanel);
 	const catalog = useDagStore((s) => s.catalog);
 	const insertNodeFromPanel = useDagStore((s) => s.insertNodeFromPanel);
@@ -16,29 +33,42 @@ export function NodePanelRight() {
 	const pendingConnect = useDagStore((s) => s.pendingConnect);
 	const pendingEdgeInsert = useDagStore((s) => s.pendingEdgeInsert);
 	const [query, setQuery] = useState("");
-	const [expandedGroups, setExpandedGroups] = useState<Set<N8nGroupId>>(
-		new Set(),
-	);
+	const [drillGroupId, setDrillGroupId] = useState<N8nGroupId | null>(null);
 	const searchRef = useRef<HTMLInputElement | null>(null);
+	const panelOpenedAtRef = useRef(0);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open) {
+			setQuery("");
+			setDrillGroupId(null);
+			return;
+		}
+		panelOpenedAtRef.current = performance.now();
 		setQuery("");
-		// Une catégorie ouverte par défaut pour montrer l’accordéon (style n8n).
-		setExpandedGroups(new Set<N8nGroupId>(["data"]));
+		setDrillGroupId(null);
 		void loadCatalog();
 		const timer = window.setTimeout(() => searchRef.current?.focus(), 40);
 		return () => window.clearTimeout(timer);
-	}, [open, loadCatalog]);
+	}, [open, nodePanelEpoch, loadCatalog]);
+
+	const handleToggleGroup = (groupId: N8nGroupId) => {
+		if (performance.now() - panelOpenedAtRef.current < 400) return;
+		toggleNodePanelGroup(groupId);
+	};
 
 	useEffect(() => {
 		if (!open) return;
 		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") closeNodePanel();
+			if (event.key !== "Escape") return;
+			if (drillGroupId) {
+				setDrillGroupId(null);
+				return;
+			}
+			closeNodePanel();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [open, closeNodePanel]);
+	}, [open, closeNodePanel, drillGroupId]);
 
 	const searching = query.trim().length > 0;
 
@@ -49,30 +79,31 @@ export function NodePanelRight() {
 		return groupCatalog(filtered);
 	}, [catalog, query, searching]);
 
-	useEffect(() => {
-		if (!searching) return;
-		setExpandedGroups(
-			new Set(
-				grouped
-					.filter(({ nodes }) => nodes.length > 0)
-					.map(({ group }) => group.id),
-			),
-		);
-	}, [searching, grouped]);
-
-	const toggleGroup = (id: N8nGroupId) => {
-		setExpandedGroups((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) next.delete(id);
-			else next.add(id);
-			return next;
-		});
-	};
-
 	if (!open) return null;
 
+	const drilled = drillGroupId
+		? groupCatalog(catalog).find((g) => g.group.id === drillGroupId)
+		: null;
+
+	if (drillGroupId && drilled) {
+		return (
+			<aside className="n8n-panel" aria-label="Human in the loop">
+				<NodePanelGroupDrilldown
+					groupId={drillGroupId}
+					nodes={drilled.nodes}
+					onBack={() => setDrillGroupId(null)}
+					onSelectNode={insertNodeFromPanel}
+				/>
+			</aside>
+		);
+	}
+
 	return (
-		<aside className="n8n-panel" aria-label="Ajouter un nœud">
+		<aside
+			key={nodePanelEpoch}
+			className="n8n-panel"
+			aria-label="Ajouter un nœud"
+		>
 			<header className="n8n-panel__head">
 				<div>
 					<p className="n8n-panel__kicker">
@@ -127,30 +158,28 @@ export function NodePanelRight() {
 				</div>
 			) : null}
 			<div className="n8n-panel__list n8n-panel__list--accordion">
-				{searching
-					? grouped.map(({ group, nodes }) =>
-							nodes.length === 0 ? null : (
-								<NodePanelCategoryAccordion
-									key={group.id}
-									group={group}
-									nodes={nodes}
-									expanded={expandedGroups.has(group.id)}
-									onToggle={() => toggleGroup(group.id)}
-									onSelectNode={insertNodeFromPanel}
-									defaultOpenSubgroups
-								/>
-							),
-						)
-					: grouped.map(({ group, nodes }) => (
-							<NodePanelCategoryAccordion
-								key={group.id}
-								group={group}
-								nodes={nodes}
-								expanded={expandedGroups.has(group.id)}
-								onToggle={() => toggleGroup(group.id)}
-								onSelectNode={insertNodeFromPanel}
-							/>
-						))}
+				{grouped.map(({ group, nodes }) => {
+					if (searching && nodes.length === 0) return null;
+					const expanded = isGroupExpanded(
+						group.id,
+						nodes.length,
+						searching,
+						userExpanded,
+					);
+					return (
+						<NodePanelCategoryAccordion
+							key={group.id}
+							group={group}
+							nodes={nodes}
+							expanded={expanded}
+							onToggle={() => handleToggleGroup(group.id)}
+							onSelectNode={insertNodeFromPanel}
+							defaultOpenSubgroups={searching}
+							navigateOnClick={DRILL_DOWN_GROUPS.includes(group.id)}
+							onNavigate={() => setDrillGroupId(group.id)}
+						/>
+					);
+				})}
 				{searching && !grouped.some(({ nodes }) => nodes.length > 0) ? (
 					<p className="n8n-panel__empty">
 						Aucun nœud ne correspond à la recherche.

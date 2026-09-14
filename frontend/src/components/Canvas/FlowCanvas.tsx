@@ -427,7 +427,10 @@ function FlowCanvasInner() {
 				className="canvas-plus"
 				aria-label="Ajouter un nœud"
 				title="Ajouter un nœud"
-				onClick={() => openNodePanel(null)}
+				onClick={(event) => {
+					event.stopPropagation();
+					openNodePanel(null);
+				}}
 			>
 				+
 			</button>

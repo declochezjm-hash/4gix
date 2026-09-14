@@ -12,6 +12,7 @@ import {
 import { create } from "zustand";
 
 import { enrichCatalog } from "../config/nodeRegistry";
+import type { N8nGroupId } from "../lib/n8nCatalog";
 import {
 	type CatalogNode,
 	type DataUploadResult,
@@ -98,6 +99,10 @@ type DagState = {
 	importNotice: string | null;
 	inspectorOpen: boolean;
 	nodePanelOpen: boolean;
+	/** Incrémenté à chaque ouverture du panneau nœuds (réinitialise l’accordéon). */
+	nodePanelEpoch: number;
+	/** Catégories ouvertes manuellement dans le panneau nœuds (vide à chaque ouverture). */
+	nodePanelExpandedGroups: N8nGroupId[];
 	pendingConnect: PendingConnect | null;
 	pendingEdgeInsert: PendingEdgeInsert | null;
 	contextMenu: ContextMenuState | null;
@@ -126,6 +131,7 @@ type DagState = {
 	openNodePanel: (pending?: PendingConnect | null) => void;
 	openNodePanelForEdgeInsert: (pending: PendingEdgeInsert) => void;
 	closeNodePanel: () => void;
+	toggleNodePanelGroup: (groupId: N8nGroupId) => void;
 	updateNodeParams: (id: string, params: Record<string, unknown>) => void;
 	updateNodeData: (id: string, patch: Partial<FlowNodeData>) => void;
 	setMapView: (view: MapViewState) => void;
@@ -381,6 +387,8 @@ export const useDagStore = create<DagState>((set, get) => ({
 	importNotice: null,
 	inspectorOpen: false,
 	nodePanelOpen: false,
+	nodePanelEpoch: 0,
+	nodePanelExpandedGroups: [],
 	pendingConnect: null,
 	pendingEdgeInsert: null,
 	contextMenu: null,
@@ -580,26 +588,41 @@ export const useDagStore = create<DagState>((set, get) => ({
 	},
 
 	openNodePanel: (pending = null) =>
-		set({
+		set((state) => ({
 			nodePanelOpen: true,
+			nodePanelEpoch: state.nodePanelEpoch + 1,
+			nodePanelExpandedGroups: [],
 			pendingConnect: pending,
 			pendingEdgeInsert: null,
 			inspectorOpen: false,
-		}),
+		})),
 
 	openNodePanelForEdgeInsert: (pending) =>
-		set({
+		set((state) => ({
 			nodePanelOpen: true,
+			nodePanelEpoch: state.nodePanelEpoch + 1,
+			nodePanelExpandedGroups: [],
 			pendingEdgeInsert: pending,
 			pendingConnect: null,
 			inspectorOpen: false,
-		}),
+		})),
 
 	closeNodePanel: () =>
 		set({
 			nodePanelOpen: false,
+			nodePanelExpandedGroups: [],
 			pendingConnect: null,
 			pendingEdgeInsert: null,
+		}),
+
+	toggleNodePanelGroup: (groupId) =>
+		set((state) => {
+			const has = state.nodePanelExpandedGroups.includes(groupId);
+			return {
+				nodePanelExpandedGroups: has
+					? state.nodePanelExpandedGroups.filter((id) => id !== groupId)
+					: [...state.nodePanelExpandedGroups, groupId],
+			};
 		}),
 
 	updateNodeParams: (id, params) =>

@@ -7,10 +7,23 @@ export type SchemaProperty = {
 	default?: unknown;
 	enum?: string[];
 	enumNames?: string[];
-	format?: "epsg" | "slider" | "sql" | "mapping" | "textarea" | "code" | string;
+	format?:
+		| "epsg"
+		| "slider"
+		| "sql"
+		| "mapping"
+		| "textarea"
+		| "code"
+		| "credential"
+		| string;
 	minimum?: number;
 	maximum?: number;
 	multipleOf?: number;
+	credentialType?: string;
+	showWhen?: Record<
+		string,
+		string | boolean | number | Array<string | boolean | number>
+	>;
 };
 
 export type NodeSchema = {
@@ -672,4 +685,40 @@ export async function stepArchitectAgent(payload: {
 		throw new Error(detail);
 	}
 	return body as StepArchitectResult;
+}
+
+export type CredentialSummary = {
+	id: string;
+	name: string;
+	type: string;
+	created_at?: string;
+};
+
+export async function fetchCredentials(
+	credentialType?: string,
+): Promise<CredentialSummary[]> {
+	const query = credentialType
+		? `?type=${encodeURIComponent(credentialType)}`
+		: "";
+	const response = await fetch(`${API_BASE}/api/v1/credentials${query}`);
+	if (!response.ok) {
+		throw new Error(`Credentials HTTP ${response.status}`);
+	}
+	return (await response.json()) as CredentialSummary[];
+}
+
+export async function createCredential(payload: {
+	name: string;
+	type: string;
+	secret?: string;
+}): Promise<CredentialSummary> {
+	const response = await fetch(`${API_BASE}/api/v1/credentials`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	if (!response.ok) {
+		throw new Error(`Create credential HTTP ${response.status}`);
+	}
+	return (await response.json()) as CredentialSummary;
 }

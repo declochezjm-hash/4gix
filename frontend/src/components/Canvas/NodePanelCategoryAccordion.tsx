@@ -12,6 +12,8 @@ type NodePanelCategoryAccordionProps = {
 	onToggle: () => void;
 	onSelectNode: (entry: CatalogNode) => void;
 	defaultOpenSubgroups?: boolean;
+	navigateOnClick?: boolean;
+	onNavigate?: () => void;
 };
 
 export function NodePanelCategoryAccordion({
@@ -21,9 +23,11 @@ export function NodePanelCategoryAccordion({
 	onToggle,
 	onSelectNode,
 	defaultOpenSubgroups = false,
+	navigateOnClick = false,
+	onNavigate,
 }: NodePanelCategoryAccordionProps) {
 	const Icon = groupLucideIcon(group.id);
-	const subgroups = catalogSubgroups(nodes);
+	const subgroups = catalogSubgroups(nodes, group.id);
 	const [openSubs, setOpenSubs] = useState<Set<string>>(() => {
 		if (defaultOpenSubgroups) {
 			return new Set(subgroups.map((s) => s.id));
@@ -36,7 +40,7 @@ export function NodePanelCategoryAccordion({
 
 	useEffect(() => {
 		if (!expanded || nodes.length === 0) return;
-		const subs = catalogSubgroups(nodes);
+		const subs = catalogSubgroups(nodes, group.id);
 		if (!subs.length) return;
 		setOpenSubs((prev) => {
 			if (prev.size > 0) return prev;
@@ -60,9 +64,9 @@ export function NodePanelCategoryAccordion({
 		<section className="n8n-panel__category">
 			<button
 				type="button"
-				className={`n8n-panel__category-head ${expanded ? "is-open" : ""}`}
-				onClick={onToggle}
-				aria-expanded={expanded}
+				className={`n8n-panel__category-head ${expanded && !navigateOnClick ? "is-open" : ""}`}
+				onClick={navigateOnClick ? onNavigate : onToggle}
+				aria-expanded={navigateOnClick ? undefined : expanded}
 			>
 				<span className="n8n-panel__category-icon" aria-hidden>
 					<Icon size={22} strokeWidth={1.75} />
@@ -78,7 +82,7 @@ export function NodePanelCategoryAccordion({
 					aria-hidden
 				/>
 			</button>
-			{expanded ? (
+			{expanded && !navigateOnClick ? (
 				<div className="n8n-panel__category-body">
 					{nodes.length === 0 ? (
 						<p className="n8n-panel__empty">Aucun nœud dans cette catégorie.</p>

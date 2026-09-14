@@ -1086,6 +1086,71 @@ body {
 	align-items: flex-start;
 	padding: 1rem 1rem 0.4rem;
 }
+.n8n-panel__head--drill {
+	align-items: center;
+	gap: 0.65rem;
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--panel-divider);
+}
+.n8n-panel__drill-title {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+	flex: 1;
+	min-width: 0;
+}
+.n8n-panel__drill-title h2 {
+	font-size: 1.05rem;
+	font-weight: 600;
+}
+.n8n-panel__drill-badge {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	border: 1px solid;
+	display: grid;
+	place-items: center;
+}
+.n8n-panel__list--drill {
+	padding: 0 0 1.2rem;
+	overflow: auto;
+	flex: 1;
+}
+.n8n-panel__drill-section {
+	border-bottom: 1px solid var(--panel-divider);
+}
+.n8n-panel__drill-section-head {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.65rem 1rem;
+	background: transparent;
+	border: 0;
+	color: var(--muted);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.n8n-panel__drill-section-head:hover {
+	background: var(--panel-row-hover);
+	color: var(--ink);
+}
+.n8n-panel__drill-node-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.n8n-panel__node-btn--compact {
+	padding: 0.55rem 1rem;
+}
+.n8n-panel__node-btn--compact .n8n-panel__node-copy strong {
+	font-size: 0.92rem;
+	font-weight: 500;
+}
 .n8n-panel__kicker {
 	margin: 0;
 	font-size: 0.68rem;
@@ -1945,6 +2010,17 @@ pre {
 }
 .config-form small {
 	color: var(--muted);
+}
+.credential-field__create {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+}
+.credential-field__create input {
+	flex: 1;
+}
+.credential-field__error {
+	color: var(--danger, #e55);
 }
 .config-form input,
 .config-form select,

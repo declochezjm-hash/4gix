@@ -7,6 +7,7 @@ import {
 	Layers,
 	Sparkles,
 	Terminal,
+	UserCheck,
 	Wand2,
 } from "lucide-react";
 import type { CatalogNode } from "./api";
@@ -37,6 +38,7 @@ const GROUP_ICONS: Record<N8nGroupId, LucideIcon> = {
 	bim: Box,
 	raster: Image,
 	io: Globe,
+	hitl: UserCheck,
 };
 
 export function groupLucideIcon(groupId: N8nGroupId): LucideIcon {
@@ -58,6 +60,9 @@ export function catalogEntryIcon(
 	}
 	if (type === "python_caller" || type === "code_node") {
 		return Terminal;
+	}
+	if (type === "human_approval" || type.startsWith("connector_")) {
+		return UserCheck;
 	}
 	return groupLucideIcon(groupIdOf(entry));
 }

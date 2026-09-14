@@ -116,6 +116,11 @@ export const NODE_PRESENTATION: Record<string, NodeRegistryEntry> = {
 			"Monaco",
 		],
 	},
+	human_approval: {
+		displayName: "Human in the loop",
+		paletteDescription: "Wait for approval or human input before continuing",
+		searchTags: ["HITL", "approval", "validation"],
+	},
 	composer_agent: {
 		displayName: "Composer Agent",
 		paletteDescription:

@@ -12,6 +12,7 @@ type NodePanelEntryProps = {
 	onSelect: (entry: CatalogNode) => void;
 	subtitle?: string;
 	showChevron?: boolean;
+	compact?: boolean;
 };
 
 export function NodePanelEntry({
@@ -20,19 +21,25 @@ export function NodePanelEntry({
 	onSelect,
 	subtitle,
 	showChevron = true,
+	compact = false,
 }: NodePanelEntryProps) {
 	const pres = nodePresentation(entry);
+	const sub = paletteSubtitle(entry, subtitle);
 	return (
 		<li>
 			<button
 				type="button"
-				className="n8n-panel__node-btn"
+				className={
+					compact
+						? "n8n-panel__node-btn n8n-panel__node-btn--compact"
+						: "n8n-panel__node-btn"
+				}
 				onClick={() => onSelect(entry)}
 			>
 				<N8nIconBadge icon={catalogEntryIcon(entry)} color={accent} size={15} />
 				<span className="n8n-panel__node-copy">
 					<strong>{pres.displayName}</strong>
-					<small>{paletteSubtitle(entry, subtitle)}</small>
+					{!compact && sub ? <small>{sub}</small> : null}
 				</span>
 				{showChevron ? (
 					<ChevronRight

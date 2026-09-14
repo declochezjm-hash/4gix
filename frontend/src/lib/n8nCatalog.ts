@@ -1,6 +1,13 @@
 import type { CatalogNode } from "./api";
 
-export type N8nGroupId = "ai" | "data" | "gis" | "bim" | "raster" | "io";
+export type N8nGroupId =
+	| "ai"
+	| "data"
+	| "gis"
+	| "bim"
+	| "raster"
+	| "io"
+	| "hitl";
 
 export type N8nGroup = {
 	id: N8nGroupId;
@@ -53,6 +60,14 @@ export const N8N_GROUPS: N8nGroup[] = [
 		description:
 			"Excel, CSV, GeoPackage, GeoJSON, KML, DXF, Shapefile, PostGIS.",
 		color: "#22C55E",
+	},
+	{
+		id: "hitl",
+		title: "Human in the loop",
+		shortTitle: "Human in the loop",
+		description:
+			"Validation humaine, approbations et connecteurs d'intégration.",
+		color: "#EC4899",
 	},
 ];
 
@@ -107,12 +122,22 @@ const TYPE_GROUP: Record<string, N8nGroupId> = {
 	file_writer: "io",
 	log_writer: "io",
 	rest_wfs_reader: "io",
+	human_approval: "hitl",
 };
+
+const HITL_PREFIX = "connector_";
+
+function isHitlNode(nodeType: string): boolean {
+	return (
+		nodeType === "human_approval" || nodeType.startsWith(HITL_PREFIX)
+	);
+}
 
 export function groupIdOf(
 	entry: Pick<CatalogNode, "node_type" | "category">,
 ): N8nGroupId {
 	if (TYPE_GROUP[entry.node_type]) return TYPE_GROUP[entry.node_type];
+	if (isHitlNode(entry.node_type)) return "hitl";
 	if (entry.category === "Reader" || entry.category === "Writer") return "io";
 	return "data";
 }
@@ -177,9 +202,22 @@ const SUBGROUP_ORDER = [
 	"Combiners",
 ];
 
+const HITL_SUBGROUP_ORDER = [
+	"Approvals",
+	"Send and wait for response",
+	"Cloud & stockage",
+	"Bases de données",
+	"APIs & web",
+	"SIG & géospatial",
+	"Fichiers & transfert",
+];
+
 export function catalogSubgroups(
 	nodes: CatalogNode[],
+	groupId?: N8nGroupId,
 ): { id: string; title: string; nodes: CatalogNode[] }[] {
+	const order =
+		groupId === "hitl" ? HITL_SUBGROUP_ORDER : SUBGROUP_ORDER;
 	const buckets = new Map<string, CatalogNode[]>();
 	for (const node of nodes) {
 		const legacyGroup =
@@ -196,8 +234,8 @@ export function catalogSubgroups(
 	}
 	return Array.from(buckets.entries())
 		.sort(([left], [right]) => {
-			const li = SUBGROUP_ORDER.indexOf(left);
-			const ri = SUBGROUP_ORDER.indexOf(right);
+			const li = order.indexOf(left);
+			const ri = order.indexOf(right);
 			const lRank = li === -1 ? 999 : li;
 			const rRank = ri === -1 ? 999 : ri;
 			if (lRank !== rRank) return lRank - rRank;

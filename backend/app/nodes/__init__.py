@@ -55,10 +55,9 @@ from app.nodes.transformers.vertex_creator import CoordinateSetterNode, VertexCr
 from app.nodes.transformers.composer_agent import ComposerAgentNode
 from app.nodes.transformers.direct_agent_processor import DirectAgentProcessorNode
 from app.nodes.transformers.auto_architect_agent import AutoArchitectAgentNode
+from app.nodes.connectors import HumanApprovalNode, build_connector_classes
 
-NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
-    cls.node_type: cls
-    for cls in (
+_NODE_CLASSES = (
         PostGISReader,
         FileReader,
         CsvReader,
@@ -110,8 +109,13 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
         PostGISWriter,
         FileWriter,
         LogWriter,
-    )
+        HumanApprovalNode,
+)
+
+NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
+    cls.node_type: cls for cls in _NODE_CLASSES
 }
+NODE_REGISTRY.update(build_connector_classes())
 
 
 def get_node_class(node_type: str) -> Type[Base4GIxNode]:
@@ -130,4 +134,16 @@ def get_node_class(node_type: str) -> Type[Base4GIxNode]:
 
 
 def list_catalog() -> List[dict]:
-    return [cls.catalog_entry() for cls in NODE_REGISTRY.values()]
+    seen: set[str] = set()
+    entries: List[dict] = []
+    for cls in _NODE_CLASSES:
+        if cls.node_type in seen:
+            continue
+        seen.add(cls.node_type)
+        entries.append(cls.catalog_entry())
+    for node_type, cls in sorted(NODE_REGISTRY.items()):
+        if node_type in seen:
+            continue
+        seen.add(node_type)
+        entries.append(cls.catalog_entry())
+    return entries
