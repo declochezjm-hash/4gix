@@ -73,15 +73,19 @@ export function EtlNode({ id, data, selected }: NodeProps) {
 	const status = payload.status || "idle";
 	const failed = status === "FAILED" || status === "error";
 	const running = status === "RUNNING" || status === "running";
+	const ghost = Boolean(payload.isGhost);
 	const rows = Math.max(inHandles.length, outHandles.length, 1);
 
 	return (
 		<>
-			<NodeActionBar nodeId={id} visible={Boolean(selected)} />
+			<NodeActionBar nodeId={id} visible={Boolean(selected) && !ghost} />
 			<div
-				className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""} ${payload.disabled ? "is-disabled" : ""}`}
+				className={`n8n-node ${selected ? "is-selected" : ""} ${running ? "is-running" : ""} ${failed ? "is-failed" : ""} ${payload.disabled ? "is-disabled" : ""} ${ghost ? "ghost-node-overlay" : ""} ${payload.nodeType === "composer_agent" ? "n8n-node--composer" : ""} ${payload.nodeType === "auto_architect_agent" ? "n8n-node--auto-architect" : ""}`}
 				style={{ minHeight: 88 + Math.max(0, rows - 1) * 18 }}
 			>
+				{ghost ? (
+					<span className="ghost-node-overlay__badge">Proposed by Agent</span>
+				) : null}
 				{inHandles.map((handleId, index) => (
 					<Handle
 						key={`in-${handleId}`}

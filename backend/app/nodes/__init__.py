@@ -51,6 +51,10 @@ from app.nodes.transformers import (
 )
 from app.nodes.writers import FileWriter, LogWriter, PostGISWriter
 from app.nodes.transformers.python_caller import PythonCallerNode
+from app.nodes.transformers.vertex_creator import CoordinateSetterNode, VertexCreatorNode
+from app.nodes.transformers.composer_agent import ComposerAgentNode
+from app.nodes.transformers.direct_agent_processor import DirectAgentProcessorNode
+from app.nodes.transformers.auto_architect_agent import AutoArchitectAgentNode
 
 NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
     cls.node_type: cls
@@ -98,6 +102,11 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
         DuplicateFilterNode,
         ReprojectorNode,
         PythonCallerNode,
+        VertexCreatorNode,
+        CoordinateSetterNode,
+        ComposerAgentNode,
+        DirectAgentProcessorNode,
+        AutoArchitectAgentNode,
         PostGISWriter,
         FileWriter,
         LogWriter,
@@ -108,6 +117,12 @@ NODE_REGISTRY: Dict[str, Type[Base4GIxNode]] = {
 def get_node_class(node_type: str) -> Type[Base4GIxNode]:
     if node_type == "code_node":
         return PythonCallerNode
+    if node_type == "composer_agent":
+        return ComposerAgentNode
+    if node_type == "direct_agent_processor":
+        return DirectAgentProcessorNode
+    if node_type == "auto_architect_agent":
+        return AutoArchitectAgentNode
     if not node_type or node_type not in NODE_REGISTRY:
         known = ", ".join(sorted(NODE_REGISTRY))
         raise KeyError(f"Type de nœud inconnu `{node_type}`. Types disponibles: {known}")

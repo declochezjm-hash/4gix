@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     postgis_db: str = "4gix_db"
     workspace_dir: str = "/workspace"
     fmw_executable: str = ""
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -44,6 +47,13 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_url(self) -> str:
         return self.database_url
+
+    @property
+    def openai_chat_completions_url(self) -> str:
+        base = (self.openai_base_url or "https://api.openai.com/v1").strip().rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
+        return f"{base}/chat/completions"
 
 
 settings = Settings()

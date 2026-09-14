@@ -4,3 +4,5 @@ import { NodeModal } from "./NodeModal";
 export function NodeInspector() {
 	return <NodeModal />;
 }
+
+export { INSPECTOR_BY_NODE_TYPE, resolveInspector } from "./inspectorRegistry";

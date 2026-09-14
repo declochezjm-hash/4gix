@@ -95,9 +95,55 @@ export type FlowNodeData = {
 	paletteGroup?: string;
 	notes?: string;
 	disabled?: boolean;
+	isGhost?: boolean;
+	outputSnapshot?: unknown;
+	inputSnapshot?: unknown;
 };
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
+
+const STEP_ARCHITECT_TIMEOUT_MS = 90_000;
+
+function formatFastApiDetail(detail: unknown): string {
+	if (typeof detail === "string") return detail;
+	if (Array.isArray(detail)) {
+		return detail
+			.map((item) => {
+				if (typeof item === "object" && item !== null && "msg" in item) {
+					const loc = (item as { loc?: unknown[] }).loc;
+					const prefix = Array.isArray(loc) ? `${loc.join(".")}: ` : "";
+					return `${prefix}${String((item as { msg: unknown }).msg)}`;
+				}
+				return JSON.stringify(item);
+			})
+			.join(" ; ");
+	}
+	if (typeof detail === "object" && detail !== null) {
+		return JSON.stringify(detail);
+	}
+	return "Échec de l’auto-architecte.";
+}
+
+async function fetchWithTimeout(
+	url: string,
+	init: RequestInit,
+	timeoutMs: number,
+): Promise<Response> {
+	const controller = new AbortController();
+	const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...init, signal: controller.signal });
+	} catch (err) {
+		if (err instanceof DOMException && err.name === "AbortError") {
+			throw new Error(
+				`Délai dépassé (${Math.round(timeoutMs / 1000)} s) — le serveur ne répond pas.`,
+			);
+		}
+		throw err;
+	} finally {
+		window.clearTimeout(timer);
+	}
+}
 
 export function wsExecuteUrl(): string {
 	const explicit = import.meta.env.VITE_WS_URL;
@@ -443,4 +489,174 @@ export async function downloadExportFmw(
 		: `${filename}.fmw`;
 	anchor.click();
 	URL.revokeObjectURL(url);
+}
+
+export type DirectProcessResult = {
+	ok: boolean;
+	node_id: string;
+	parent_node_id: string;
+	snapshot: NodeSnapshot;
+	code?: string;
+	log?: string;
+	feature_count_before?: number;
+	feature_count_after?: number;
+};
+
+export async function directProcessAgent(payload: {
+	node_id: string;
+	prompt: string;
+	sample_limit?: number;
+	current_graph: {
+		nodes: unknown[];
+		edges: unknown[];
+		snapshots: Record<string, NodeSnapshot>;
+	};
+	execution_id?: string | null;
+	api_key?: string;
+}): Promise<DirectProcessResult> {
+	const response = await fetch(`${API_BASE}/api/v1/agent/direct-process`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	const body = await response.json();
+	if (!response.ok) {
+		const detail =
+			typeof body.detail === "string"
+				? body.detail
+				: body.detail?.error ||
+					body.detail?.log ||
+					"Échec du traitement direct.";
+		throw new Error(detail);
+	}
+	return body as DirectProcessResult;
+}
+
+export type StepArchitectPreviousStep = {
+	index: number;
+	node_id: string;
+	step_summary: string;
+	branch_id?: number;
+};
+
+export type StepArchitectResult = {
+	ok: boolean;
+	global_objective: string;
+	global_plan: string[];
+	current_step_index: number;
+	total_steps: number;
+	is_complete: boolean;
+	step_summary?: string | null;
+	next_step_hint?: string | null;
+	step_kind?: string;
+	proposed_node?: Record<string, unknown> | null;
+	proposed_edge?: Record<string, unknown> | null;
+	anchor_node_id?: string;
+	layout_anchor_node_id?: string;
+	attach_to_source?: boolean;
+	branch_index?: number;
+	branch_id?: number;
+	inspect?: Record<string, unknown>;
+	proactive_suggestions?: string[];
+	geometry_notices?: string[];
+};
+
+export type ExecutionHealResult = {
+	ok: boolean;
+	explanation?: string;
+	chat_message?: string;
+	error?: string;
+	failed_node_id?: string;
+	corrective_steps?: Array<Record<string, unknown>>;
+	proposed_node?: Record<string, unknown> | null;
+	proposed_edge?: Record<string, unknown> | null;
+	heal_followup_edge?: {
+		from_node_id?: string | null;
+		to_node_id?: string | null;
+	} | null;
+};
+
+export async function executionHealAgent(payload: {
+	error_message: string;
+	failed_node_id: string;
+	global_objective?: string;
+	source_node_id?: string | null;
+	current_graph: {
+		nodes: unknown[];
+		edges: unknown[];
+		snapshots: Record<string, NodeSnapshot>;
+	};
+}): Promise<ExecutionHealResult> {
+	const response = await fetchWithTimeout(
+		`${API_BASE}/api/v1/agent/execution-heal`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		},
+		STEP_ARCHITECT_TIMEOUT_MS,
+	);
+	const raw = await response.text();
+	let body: Record<string, unknown> = {};
+	try {
+		body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+	} catch {
+		throw new Error(
+			raw.trim().slice(0, 240) ||
+				`Réponse invalide du serveur (${response.status}).`,
+		);
+	}
+	if (!response.ok) {
+		const detail =
+			body.detail !== undefined
+				? formatFastApiDetail(body.detail)
+				: typeof body.error === "string"
+					? body.error
+					: `Échec HTTP ${response.status} — auto-healing.`;
+		throw new Error(detail);
+	}
+	return body as ExecutionHealResult;
+}
+
+export async function stepArchitectAgent(payload: {
+	global_objective: string;
+	current_step_index: number;
+	previous_steps: StepArchitectPreviousStep[];
+	current_graph: {
+		nodes: unknown[];
+		edges: unknown[];
+		snapshots: Record<string, NodeSnapshot>;
+	};
+	source_node_id: string;
+	layout_anchor_node_id?: string | null;
+}): Promise<StepArchitectResult> {
+	const response = await fetchWithTimeout(
+		`${API_BASE}/api/v1/agent/step-architect`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		},
+		STEP_ARCHITECT_TIMEOUT_MS,
+	);
+	const raw = await response.text();
+	let body: Record<string, unknown> = {};
+	try {
+		body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+	} catch {
+		throw new Error(
+			raw.trim().slice(0, 240) ||
+				`Réponse invalide du serveur (${response.status}).`,
+		);
+	}
+	if (!response.ok) {
+		const detail =
+			body.detail !== undefined
+				? formatFastApiDetail(body.detail)
+				: typeof body.error === "string"
+					? body.error
+					: `Échec HTTP ${response.status} — auto-architecte.`;
+		throw new Error(detail);
+	}
+	return body as StepArchitectResult;
 }

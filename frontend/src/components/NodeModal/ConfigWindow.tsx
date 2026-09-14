@@ -2,6 +2,9 @@ import { useMemo } from "react";
 import { getNodeDoc } from "../../config/nodeDocs";
 import type { SchemaProperty } from "../../lib/api";
 import { useDagStore } from "../../store/dagStore";
+import { ComposerAgentInspector } from "../inspectors/ComposerAgentInspector";
+import { DirectAgentChatPanel } from "../agent/DirectAgentChatPanel";
+import { resolveInspector } from "./inspectorRegistry";
 import { AttributeManagerConfig } from "./AttributeManagerConfig";
 import { CodeEditorParam } from "./CodeEditorParam";
 import { defaultCodeForLanguage } from "./codeTemplates";
@@ -267,6 +270,10 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 	const updateNodeParams = useDagStore((s) => s.updateNodeParams);
 	const updateNodeData = useDagStore((s) => s.updateNodeData);
 	const node = nodes.find((n) => n.id === selectedNodeId);
+	const isDirectAgent = node?.data.nodeType === "direct_agent_processor";
+	const CustomInspector = node
+		? resolveInspector(node.data.nodeType)
+		: null;
 	const catalogEntry = catalog.find(
 		(item) => item.node_type === node?.data.nodeType,
 	);
@@ -312,6 +319,17 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 					>
 						Paramètres
 					</button>
+					{isDirectAgent ? (
+						<button
+							type="button"
+							role="tab"
+							aria-selected={tab === "directChat"}
+							className={tab === "directChat" ? "is-active" : ""}
+							onClick={() => onTabChange("directChat")}
+						>
+							Tchat Direct
+						</button>
+					) : null}
 					<button
 						type="button"
 						role="tab"
@@ -362,6 +380,20 @@ export function ConfigWindow({ tab, onTabChange }: ConfigWindowProps) {
 						<input value={node.data.nodeType} readOnly />
 					</label>
 				</form>
+			) : tab === "directChat" && isDirectAgent ? (
+				<DirectAgentChatPanel nodeId={node.id} />
+			) : tab === "parameters" && CustomInspector ? (
+				<CustomInspector nodeId={node.id} />
+			) : tab === "parameters" && node.data.nodeType === "composer_agent" ? (
+				<ComposerAgentInspector composerNodeId={node.id} />
+			) : tab === "parameters" && isDirectAgent ? (
+				<div className="config-form">
+					<p className="direct-agent-chat__hint">
+						Saisissez une instruction sur le nœud canvas (étincelle) ou utilisez
+						l’onglet <strong>Tchat Direct</strong> pour enchaîner plusieurs
+						consignes.
+					</p>
+				</div>
 			) : tab === "parameters" && isCodeNodeType(node.data.nodeType) ? (
 				<form
 					className="config-form config-form--code"
