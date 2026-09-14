@@ -40,3 +40,12 @@ def save_workflow(spec: WorkflowSpec) -> Dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/workflows/{workflow_id}")
+def delete_workflow(workflow_id: str) -> Dict[str, Any]:
+    if not persistence.get_workflow(workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow introuvable.")
+    if not persistence.delete_workflow(workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow introuvable.")
+    return {"ok": True, "id": workflow_id}

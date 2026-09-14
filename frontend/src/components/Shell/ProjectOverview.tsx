@@ -71,6 +71,9 @@ export function ProjectOverview() {
 	const openInspector = useDagStore((s) => s.openInspector);
 	const setAppView = useDagStore((s) => s.setAppView);
 	const newWorkflow = useDagStore((s) => s.newWorkflow);
+	const renameWorkflow = useDagStore((s) => s.renameWorkflow);
+	const duplicateWorkflow = useDagStore((s) => s.duplicateWorkflow);
+	const deleteWorkflowById = useDagStore((s) => s.deleteWorkflowById);
 	const toggleNodeDisabled = useDagStore((s) => s.toggleNodeDisabled);
 	const canvasPages = useDagStore((s) => s.canvasPages);
 
@@ -603,6 +606,37 @@ export function ProjectOverview() {
 														}}
 													>
 														Aller au canvas
+													</button>
+													<button
+														type="button"
+														role="menuitem"
+														onClick={() => {
+															setMenuOpenId(null);
+															void renameWorkflow(record.id);
+														}}
+													>
+														Renommer
+													</button>
+													<button
+														type="button"
+														role="menuitem"
+														onClick={() => {
+															setMenuOpenId(null);
+															void duplicateWorkflow(record.id);
+														}}
+													>
+														Dupliquer
+													</button>
+													<button
+														type="button"
+														role="menuitem"
+														className="is-danger"
+														onClick={() => {
+															setMenuOpenId(null);
+															void deleteWorkflowById(record.id);
+														}}
+													>
+														Supprimer
 													</button>
 												</div>
 											) : null}

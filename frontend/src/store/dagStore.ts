@@ -30,6 +30,7 @@ import {
 	type MapViewState,
 	type NodeSnapshot,
 	saveWorkflow,
+	deleteWorkflow,
 	uploadDataFile,
 	type WorkflowRecord,
 	directProcessAgent,
@@ -133,6 +134,9 @@ type DagState = {
 	loadWorkflows: () => Promise<void>;
 	loadWorkflow: (id: string) => void;
 	saveCurrentWorkflow: () => Promise<void>;
+	renameWorkflow: (id: string, name?: string) => Promise<void>;
+	duplicateWorkflow: (id: string) => Promise<void>;
+	deleteWorkflowById: (id: string) => Promise<void>;
 	runDag: () => Promise<void>;
 	runSelectedNode: () => Promise<void>;
 	runDirectProcess: (nodeId: string, prompt: string) => Promise<void>;
@@ -789,6 +793,77 @@ export const useDagStore = create<DagState>((set, get) => ({
 		} catch (err) {
 			set({
 				error: err instanceof Error ? err.message : "Échec de sauvegarde",
+			});
+		}
+	},
+
+	renameWorkflow: async (id, name) => {
+		const record = get().workflows.find((item) => item.id === id);
+		if (!record) return;
+		const nextName =
+			name?.trim() ||
+			window.prompt("Renommer le workflow", record.name)?.trim();
+		if (!nextName) return;
+		try {
+			const saved = await saveWorkflow({
+				id: record.id,
+				name: nextName,
+				definition: record.definition || {},
+			});
+			if (get().workflowId === id) {
+				set({ workflowName: saved.name });
+			}
+			await get().loadWorkflows();
+		} catch (err) {
+			set({
+				error: err instanceof Error ? err.message : "Échec du renommage",
+			});
+		}
+	},
+
+	duplicateWorkflow: async (id) => {
+		const record = get().workflows.find((item) => item.id === id);
+		if (!record) return;
+		const base = `${record.name} (copie)`;
+		let name = base;
+		const existing = new Set(get().workflows.map((w) => w.name));
+		let n = 2;
+		while (existing.has(name)) {
+			name = `${record.name} (copie ${n})`;
+			n += 1;
+		}
+		try {
+			const saved = await saveWorkflow({
+				name,
+				definition: record.definition || {},
+			});
+			await get().loadWorkflows();
+			get().loadWorkflow(saved.id);
+			set({ appView: "editor", error: null });
+		} catch (err) {
+			set({
+				error: err instanceof Error ? err.message : "Échec de la duplication",
+			});
+		}
+	},
+
+	deleteWorkflowById: async (id) => {
+		const record = get().workflows.find((item) => item.id === id);
+		if (!record) return;
+		const ok = window.confirm(
+			`Supprimer définitivement le workflow « ${record.name} » ?`,
+		);
+		if (!ok) return;
+		try {
+			await deleteWorkflow(id);
+			if (get().workflowId === id) {
+				get().newWorkflow();
+			}
+			await get().loadWorkflows();
+			set({ error: null });
+		} catch (err) {
+			set({
+				error: err instanceof Error ? err.message : "Échec de la suppression",
 			});
 		}
 	},

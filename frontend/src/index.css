@@ -581,6 +581,13 @@ body {
 .overview-card__menu button:hover {
 	background: var(--menu-hover);
 }
+.overview-card__menu button.is-danger {
+	color: #f87171;
+}
+.overview-card__menu button.is-danger:hover {
+	background: #ef444422;
+	color: #fca5a5;
+}
 
 .project-overview__footer {
 	display: flex;

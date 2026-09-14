@@ -87,6 +87,16 @@ def upsert_workflow(
     return saved
 
 
+def delete_workflow(workflow_id: str) -> bool:
+    engine = get_engine()
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM gix.workflows WHERE id = :id"),
+            {"id": as_uuid(workflow_id)},
+        )
+    return bool(result.rowcount)
+
+
 def create_execution(
     execution_id: str,
     workflow_id: Optional[str] = None,

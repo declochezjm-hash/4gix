@@ -215,6 +215,19 @@ export async function saveWorkflow(payload: {
 	return body;
 }
 
+export async function deleteWorkflow(workflowId: string): Promise<void> {
+	const response = await fetch(`${API_BASE}/api/workflows/${workflowId}`, {
+		method: "DELETE",
+	});
+	if (!response.ok) {
+		const body = await response.json().catch(() => ({}));
+		throw new Error(
+			(body as { detail?: string }).detail ||
+				"Impossible de supprimer le workflow.",
+		);
+	}
+}
+
 export async function fetchNodeSnapshot(
 	executionId: string,
 	nodeId: string,
