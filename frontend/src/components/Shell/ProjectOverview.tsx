@@ -11,10 +11,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FlowNodeData, WorkflowRecord } from "../../lib/api";
 import { topologicalLayerMap } from "../../lib/workflowPagination";
 import { useDagStore } from "../../store/dagStore";
+import { OverviewToggle } from "./OverviewToggle";
 
 type OverviewTab = "nodes" | "workflows";
 type OverviewViewMode = "comfortable" | "compact";
 type NodeStatusFilter = "all" | "active" | "inactive";
+type NodeCategoryFilter = "Reader" | "Transformer" | "Writer";
 type WorkflowScopeFilter = "all" | "open";
 type WorkflowSort = "updated" | "name" | "created";
 
@@ -82,6 +84,9 @@ export function ProjectOverview() {
 	const [viewMode, setViewMode] = useState<OverviewViewMode>("comfortable");
 	const [nodeStatusFilter, setNodeStatusFilter] =
 		useState<NodeStatusFilter>("all");
+	const [categoryFilters, setCategoryFilters] = useState<
+		Set<NodeCategoryFilter>
+	>(() => new Set());
 	const [workflowScopeFilter, setWorkflowScopeFilter] =
 		useState<WorkflowScopeFilter>("all");
 	const [workflowSort, setWorkflowSort] = useState<WorkflowSort>("updated");
@@ -122,13 +127,18 @@ export function ProjectOverview() {
 		} else if (nodeStatusFilter === "inactive") {
 			rows = rows.filter((row) => row.disabled);
 		}
+		if (categoryFilters.size > 0) {
+			rows = rows.filter((row) =>
+				categoryFilters.has(row.category as NodeCategoryFilter),
+			);
+		}
 		rows.sort((a, b) => {
 			if (sort === "name") return a.label.localeCompare(b.label, "fr");
 			if (sort === "type") return a.type.localeCompare(b.type, "fr");
 			return a.layer - b.layer || a.label.localeCompare(b.label, "fr");
 		});
 		return rows;
-	}, [nodes, layers, search, sort, nodeStatusFilter]);
+	}, [nodes, layers, search, sort, nodeStatusFilter, categoryFilters]);
 
 	const workflowRows = useMemo(() => {
 		const q = search.trim().toLowerCase();
@@ -160,8 +170,21 @@ export function ProjectOverview() {
 
 	const filtersActive =
 		tab === "nodes"
-			? nodeStatusFilter !== "all"
+			? nodeStatusFilter !== "all" || categoryFilters.size > 0
 			: workflowScopeFilter !== "all";
+
+	const toggleCategoryFilter = (category: NodeCategoryFilter) => {
+		setCategoryFilters((prev) => {
+			const next = new Set(prev);
+			if (next.has(category)) {
+				next.delete(category);
+			} else {
+				next.add(category);
+			}
+			return next;
+		});
+		setPage(0);
+	};
 
 	const activeList = tab === "nodes" ? nodeRows : workflowRows;
 	const totalPages = Math.max(1, Math.ceil(activeList.length / pageSize));
@@ -283,6 +306,22 @@ export function ProjectOverview() {
 						<div className="project-overview__filters-popover" role="dialog">
 							<p className="project-overview__filters-title">Filtres</p>
 							{tab === "nodes" ? (
+								<>
+								<fieldset className="project-overview__filters-fieldset">
+									<legend>Catégorie</legend>
+									{(
+										["Reader", "Transformer", "Writer"] as NodeCategoryFilter[]
+									).map((category) => (
+										<label key={category}>
+											<input
+												type="checkbox"
+												checked={categoryFilters.has(category)}
+												onChange={() => toggleCategoryFilter(category)}
+											/>
+											{category}
+										</label>
+									))}
+								</fieldset>
 								<fieldset className="project-overview__filters-fieldset">
 									<legend>État du nœud</legend>
 									<label>
@@ -322,6 +361,7 @@ export function ProjectOverview() {
 										Inactifs uniquement
 									</label>
 								</fieldset>
+								</>
 							) : (
 								<fieldset className="project-overview__filters-fieldset">
 									<legend>Portée</legend>
@@ -407,32 +447,32 @@ export function ProjectOverview() {
 										</span>
 									</button>
 									<div className="overview-card__aside">
-										<span className="overview-tag">
-											<span className="overview-tag__dot" aria-hidden />
-											{row.category || "Nœud"}
-										</span>
-										<label
-											className="overview-switch"
-											onClick={(e) => e.stopPropagation()}
-											onKeyDown={(e) => e.stopPropagation()}
-										>
-											<span
-												className={
-													active
-														? "overview-switch__label is-on"
-														: "overview-switch__label"
+										<button
+											type="button"
+											className={`overview-tag overview-tag--${(
+												row.category || "node"
+											).toLowerCase()}`}
+											title={`Filtrer les nœuds ${row.category || ""}`}
+											onClick={(e) => {
+												e.stopPropagation();
+												if (
+													row.category === "Reader" ||
+													row.category === "Transformer" ||
+													row.category === "Writer"
+												) {
+													toggleCategoryFilter(row.category);
 												}
-											>
-												{active ? "Actif" : "Inactif"}
-											</span>
-											<input
-												type="checkbox"
-												checked={active}
-												onChange={() => toggleNodeDisabled(row.id)}
-												aria-label={`Activer ${row.label}`}
-											/>
-											<span className="overview-switch__track" aria-hidden />
-										</label>
+											}}
+										>
+											{row.category || "Nœud"}
+										</button>
+										<OverviewToggle
+											checked={active}
+											onChange={() => toggleNodeDisabled(row.id)}
+											labelOn="Actif"
+											labelOff="Inactif"
+											ariaLabel={`Activer ${row.label}`}
+										/>
 										<div className="overview-card__menu-wrap">
 											<button
 												type="button"
@@ -507,44 +547,28 @@ export function ProjectOverview() {
 										</span>
 									</button>
 									<div className="overview-card__aside">
-										<span className="overview-tag">
-											<span className="overview-tag__dot" aria-hidden />
+										<span className="overview-tag overview-tag--project">
 											Projet
 										</span>
-										<label
-											className="overview-switch"
-											onClick={(e) => e.stopPropagation()}
-											onKeyDown={(e) => e.stopPropagation()}
-										>
-											<span
-												className={
-													isCurrent
-														? "overview-switch__label is-on"
-														: "overview-switch__label"
+										<OverviewToggle
+											checked={isCurrent}
+											onChange={(next) => {
+												if (next) {
+													openWorkflow(record);
+													return;
 												}
-											>
-												{isCurrent ? "Ouvert" : "Fermé"}
-											</span>
-											<input
-												type="checkbox"
-												checked={isCurrent}
-												onChange={(e) => {
-													if (e.target.checked) {
-														openWorkflow(record);
-														return;
-													}
-													if (isCurrent) {
-														newWorkflow();
-													}
-												}}
-												aria-label={
-													isCurrent
-														? `Fermer ${record.name}`
-														: `Ouvrir ${record.name}`
+												if (isCurrent) {
+													newWorkflow();
 												}
-											/>
-											<span className="overview-switch__track" aria-hidden />
-										</label>
+											}}
+											labelOn="Ouvert"
+											labelOff="Fermé"
+											ariaLabel={
+												isCurrent
+													? `Fermer ${record.name}`
+													: `Ouvrir ${record.name}`
+											}
+										/>
 										<div className="overview-card__menu-wrap">
 											<button
 												type="button"

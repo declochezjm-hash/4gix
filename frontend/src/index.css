@@ -355,6 +355,14 @@ body {
 	color: var(--ink);
 	cursor: pointer;
 }
+.project-overview__filters-fieldset input[type="checkbox"],
+.project-overview__filters-fieldset input[type="radio"] {
+	accent-color: #22c55e;
+	width: 1rem;
+	height: 1rem;
+	cursor: pointer;
+	flex-shrink: 0;
+}
 
 .overview-cards {
 	list-style: none;
@@ -432,36 +440,54 @@ body {
 .overview-tag {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
-	font-size: 0.78rem;
-	color: var(--muted);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
 	white-space: nowrap;
-}
-.overview-tag__dot {
-	width: 14px;
-	height: 14px;
-	border-radius: 4px;
 	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 0.2rem 0.55rem;
+	cursor: pointer;
 	background: var(--panel-row-bg);
+	color: var(--ink);
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease;
+}
+.overview-tag:hover {
+	border-color: var(--accent, #3b82f6);
+	background: var(--panel-row-hover);
+}
+.overview-tag--reader {
+	border-color: #22c55e66;
+	color: #86efac;
+}
+.overview-tag--transformer {
+	border-color: #a855f766;
+	color: #d8b4fe;
+}
+.overview-tag--writer {
+	border-color: #3b82f666;
+	color: #93c5fd;
 }
 .overview-switch {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.45rem;
 	cursor: pointer;
-	position: relative;
 }
-.overview-switch input {
-	position: absolute;
-	right: 0;
-	top: 50%;
-	transform: translateY(-50%);
+.overview-switch__control {
+	position: relative;
 	width: 38px;
 	height: 22px;
+	flex-shrink: 0;
+	border: 0;
+	padding: 0;
 	margin: 0;
-	opacity: 0;
+	background: transparent;
 	cursor: pointer;
-	z-index: 2;
+	display: block;
 }
 .overview-switch__label {
 	font-size: 0.78rem;
@@ -474,12 +500,14 @@ body {
 	font-weight: 600;
 }
 .overview-switch__track {
-	width: 38px;
-	height: 22px;
+	width: 100%;
+	height: 100%;
 	border-radius: 999px;
 	background: #3f3f46;
 	position: relative;
+	display: block;
 	transition: background 0.15s ease;
+	pointer-events: none;
 }
 .overview-switch__track::after {
 	content: "";
@@ -492,11 +520,20 @@ body {
 	left: 3px;
 	transition: transform 0.15s ease;
 }
-.overview-switch input:checked + .overview-switch__track {
+.overview-switch__control.is-on .overview-switch__track {
 	background: #22c55e;
 }
-.overview-switch input:checked + .overview-switch__track::after {
+.overview-switch__control.is-on .overview-switch__track::after {
 	transform: translateX(16px);
+}
+.overview-tag--project {
+	border-color: #f9731666;
+	color: #fdba74;
+	cursor: default;
+}
+.overview-tag--project:hover {
+	border-color: #f9731666;
+	background: var(--panel-row-bg);
 }
 .overview-card__menu-wrap {
 	position: relative;
