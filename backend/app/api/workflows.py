@@ -30,6 +30,13 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
     return item
 
 
+@router.delete("/workflows/{workflow_id}")
+def delete_workflow(workflow_id: str) -> Dict[str, Any]:
+    if not persistence.delete_workflow(workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow introuvable.")
+    return {"ok": True, "id": workflow_id}
+
+
 @router.post("/workflows")
 def save_workflow(spec: WorkflowSpec) -> Dict[str, Any]:
     try:

@@ -24,6 +24,21 @@ def list_workflows() -> List[Dict[str, Any]]:
         return [_workflow_row(row) for row in rows.mappings()]
 
 
+def delete_workflow(workflow_id: str) -> bool:
+    engine = get_engine()
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                """
+                DELETE FROM gix.workflows
+                WHERE id = :id
+                """
+            ),
+            {"id": as_uuid(workflow_id)},
+        )
+        return result.rowcount > 0
+
+
 def get_workflow(workflow_id: str) -> Optional[Dict[str, Any]]:
     engine = get_engine()
     with engine.connect() as conn:

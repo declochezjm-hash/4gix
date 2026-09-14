@@ -250,6 +250,19 @@ body {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
+.project-overview__feedback {
+	margin: 0 0 0.75rem;
+	padding: 0.55rem 0.75rem;
+	border-radius: 8px;
+	border: 1px solid rgba(46, 204, 113, 0.35);
+	background: rgba(46, 204, 113, 0.12);
+	color: var(--ink);
+	font-size: 0.86rem;
+}
+.overview-card.is-highlighted {
+	border-color: var(--accent, #ff6d3a);
+	box-shadow: 0 0 0 1px var(--accent, #ff6d3a);
+}
 .project-overview__toolbar {
 	display: flex;
 	flex-wrap: wrap;
@@ -399,6 +412,8 @@ body {
 	border: 1px solid var(--line);
 	background: var(--overview-card-bg, var(--bg-elev));
 	min-height: 72px;
+	position: relative;
+	overflow: visible;
 }
 .overview-card__main {
 	flex: 1;
@@ -500,6 +515,10 @@ body {
 }
 .overview-card__menu-wrap {
 	position: relative;
+	z-index: 1;
+}
+.overview-card__menu-wrap:has(.overview-card__menu) {
+	z-index: 30;
 }
 .overview-card__menu-btn {
 	width: 32px;
@@ -520,7 +539,7 @@ body {
 	position: absolute;
 	right: 0;
 	top: calc(100% + 4px);
-	z-index: 10;
+	z-index: 40;
 	min-width: 200px;
 	background: var(--menu-bg);
 	border: 1px solid var(--line);
@@ -543,6 +562,15 @@ body {
 }
 .overview-card__menu button:hover {
 	background: var(--menu-hover);
+}
+.overview-card__menu button.is-danger {
+	color: var(--danger);
+	margin-top: 0.2rem;
+	border-top: 1px solid var(--line);
+	padding-top: 0.55rem;
+}
+.overview-card__menu button.is-danger:hover {
+	background: rgba(255, 109, 90, 0.12);
 }
 
 .project-overview__footer {

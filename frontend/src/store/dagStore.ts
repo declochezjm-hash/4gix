@@ -29,6 +29,7 @@ import {
 	isShapefileZipFilename,
 	type MapViewState,
 	type NodeSnapshot,
+	deleteWorkflow as deleteWorkflowApi,
 	saveWorkflow,
 	uploadDataFile,
 	type WorkflowRecord,
@@ -133,6 +134,8 @@ type DagState = {
 	loadCatalog: () => Promise<void>;
 	loadWorkflows: () => Promise<void>;
 	loadWorkflow: (id: string) => void;
+	duplicateWorkflow: (id: string) => Promise<string | null>;
+	deleteWorkflow: (id: string) => Promise<void>;
 	saveCurrentWorkflow: () => Promise<void>;
 	runDag: () => Promise<void>;
 	runSelectedNode: () => Promise<void>;
@@ -743,6 +746,56 @@ export const useDagStore = create<DagState>((set, get) => ({
 		}
 	},
 
+	duplicateWorkflow: async (id) => {
+		const record = get().workflows.find((item) => item.id === id);
+		if (!record) return null;
+		const copyName = `${record.name} (copie)`;
+		try {
+			const saved = await saveWorkflow({
+				name: copyName,
+				definition: JSON.parse(JSON.stringify(record.definition ?? {})),
+			});
+			await get().loadWorkflows();
+			set({
+				error: null,
+				importNotice: `Workflow dupliqué : « ${saved.name} » (en tête de liste).`,
+			});
+			return saved.id;
+		} catch (err) {
+			set({
+				error:
+					err instanceof Error
+						? err.message
+						: "Impossible de dupliquer le workflow.",
+			});
+			return null;
+		}
+	},
+
+	deleteWorkflow: async (id) => {
+		const record = get().workflows.find((item) => item.id === id);
+		const label = record?.name ?? "Workflow";
+		try {
+			await deleteWorkflowApi(id);
+			const wasCurrent = get().workflowId === id;
+			await get().loadWorkflows();
+			if (wasCurrent) {
+				get().newWorkflow();
+			}
+			set({
+				error: null,
+				importNotice: `« ${label} » a été supprimé.`,
+			});
+		} catch (err) {
+			set({
+				error:
+					err instanceof Error
+						? err.message
+						: "Impossible de supprimer le workflow.",
+			});
+		}
+	},
+
 	loadWorkflow: (id) => {
 		const record = get().workflows.find((item) => item.id === id);
 		if (!record) return;
@@ -832,7 +885,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 		set({ contextMenu: menu, selectedNodeId: menu.nodeId }),
 	closeContextMenu: () => set({ contextMenu: null }),
 
-	deleteNode: (id) =>
+	deleteNode: (id) => {
 		set({
 			nodes: get().nodes.filter((node) => node.id !== id),
 			edges: get().edges.filter(
@@ -840,7 +893,9 @@ export const useDagStore = create<DagState>((set, get) => ({
 			),
 			selectedNodeId: get().selectedNodeId === id ? null : get().selectedNodeId,
 			contextMenu: null,
-		}),
+		});
+		get().rebuildCanvasPages();
+	},
 
 	duplicateNode: (id) => {
 		const source = get().nodes.find((node) => node.id === id);
@@ -864,6 +919,7 @@ export const useDagStore = create<DagState>((set, get) => ({
 			selectedNodeId: copy.id,
 			contextMenu: null,
 		});
+		get().rebuildCanvasPages();
 	},
 
 	copyNode: (id) => {

@@ -70,6 +70,11 @@ export function ProjectOverview() {
 	const setAppView = useDagStore((s) => s.setAppView);
 	const newWorkflow = useDagStore((s) => s.newWorkflow);
 	const toggleNodeDisabled = useDagStore((s) => s.toggleNodeDisabled);
+	const deleteNode = useDagStore((s) => s.deleteNode);
+	const duplicateNode = useDagStore((s) => s.duplicateNode);
+	const duplicateWorkflow = useDagStore((s) => s.duplicateWorkflow);
+	const deleteWorkflow = useDagStore((s) => s.deleteWorkflow);
+	const importNotice = useDagStore((s) => s.importNotice);
 	const canvasPages = useDagStore((s) => s.canvasPages);
 
 	const [tab, setTab] = useState<OverviewTab>("nodes");
@@ -85,7 +90,34 @@ export function ProjectOverview() {
 	const [workflowScopeFilter, setWorkflowScopeFilter] =
 		useState<WorkflowScopeFilter>("all");
 	const [workflowSort, setWorkflowSort] = useState<WorkflowSort>("updated");
+	const [highlightWorkflowId, setHighlightWorkflowId] = useState<string | null>(
+		null,
+	);
+	const [nodeActionMessage, setNodeActionMessage] = useState<string | null>(
+		null,
+	);
 	const filtersRef = useRef<HTMLDivElement>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!menuOpenId) return;
+		const onPointerDown = (event: MouseEvent) => {
+			if (
+				menuRef.current &&
+				!menuRef.current.contains(event.target as HTMLElement)
+			) {
+				setMenuOpenId(null);
+			}
+		};
+		document.addEventListener("click", onPointerDown);
+		return () => document.removeEventListener("click", onPointerDown);
+	}, [menuOpenId]);
+
+	useEffect(() => {
+		if (!highlightWorkflowId) return;
+		const timer = window.setTimeout(() => setHighlightWorkflowId(null), 4000);
+		return () => window.clearTimeout(timer);
+	}, [highlightWorkflowId]);
 
 	useEffect(() => {
 		if (!filtersOpen) return;
@@ -174,6 +206,36 @@ export function ProjectOverview() {
 		setAppView("editor");
 	};
 
+	const confirmDeleteWorkflow = (record: WorkflowRecord) => {
+		const ok = window.confirm(
+			`Supprimer le workflow « ${record.name} » ? Cette action est irréversible.`,
+		);
+		if (!ok) return;
+		setMenuOpenId(null);
+		void deleteWorkflow(record.id);
+	};
+
+	const confirmDeleteNode = (label: string, id: string) => {
+		const ok = window.confirm(
+			`Supprimer le nœud « ${label} » ? Les liaisons associées seront retirées.`,
+		);
+		if (!ok) return;
+		setMenuOpenId(null);
+		deleteNode(id);
+		setNodeActionMessage(`Nœud « ${label} » supprimé. Enregistrez le workflow pour persister.`);
+	};
+
+	const runDuplicateWorkflow = async (id: string) => {
+		setMenuOpenId(null);
+		setTab("workflows");
+		setWorkflowSort("updated");
+		setPage(0);
+		const newId = await duplicateWorkflow(id);
+		if (newId) {
+			setHighlightWorkflowId(newId);
+		}
+	};
+
 	const subtitle =
 		tab === "nodes"
 			? `Tous les nœuds du projet « ${workflowName} » (${nodes.length} nœuds, ${edges.length} liaisons, ${canvasPages.length} pages canvas).`
@@ -223,6 +285,12 @@ export function ProjectOverview() {
 					Exécutions
 				</button>
 			</div>
+
+			{importNotice || nodeActionMessage ? (
+				<p className="project-overview__feedback" role="status">
+					{importNotice || nodeActionMessage}
+				</p>
+			) : null}
 
 			<div className="project-overview__toolbar">
 				<div className="project-overview__search">
@@ -433,7 +501,10 @@ export function ProjectOverview() {
 											/>
 											<span className="overview-switch__track" aria-hidden />
 										</label>
-										<div className="overview-card__menu-wrap">
+										<div
+											className="overview-card__menu-wrap"
+											ref={menuOpenId === row.id ? menuRef : undefined}
+										>
 											<button
 												type="button"
 												className="overview-card__menu-btn"
@@ -445,7 +516,11 @@ export function ProjectOverview() {
 												<MoreVertical size={18} />
 											</button>
 											{menuOpenId === row.id ? (
-												<div className="overview-card__menu" role="menu">
+												<div
+													className="overview-card__menu"
+													role="menu"
+													onMouseDown={(event) => event.stopPropagation()}
+												>
 													<button
 														type="button"
 														role="menuitem"
@@ -455,6 +530,19 @@ export function ProjectOverview() {
 														}}
 													>
 														Ouvrir sur le canvas
+													</button>
+													<button
+														type="button"
+														role="menuitem"
+														onClick={() => {
+															duplicateNode(row.id);
+															setMenuOpenId(null);
+															setNodeActionMessage(
+																`Nœud « ${row.label} » dupliqué sur le canvas.`,
+															);
+														}}
+													>
+														Dupliquer
 													</button>
 													<button
 														type="button"
@@ -477,6 +565,16 @@ export function ProjectOverview() {
 													>
 														{active ? "Désactiver" : "Activer"}
 													</button>
+													<button
+														type="button"
+														role="menuitem"
+														className="is-danger"
+														onClick={() =>
+															confirmDeleteNode(row.label, row.id)
+														}
+													>
+														Supprimer
+													</button>
 												</div>
 											) : null}
 										</div>
@@ -494,7 +592,14 @@ export function ProjectOverview() {
 							);
 							const created = formatCreated(record.created_at);
 							return (
-								<li key={record.id} className="overview-card">
+								<li
+									key={record.id}
+									className={
+										highlightWorkflowId === record.id
+											? "overview-card is-highlighted"
+											: "overview-card"
+									}
+								>
 									<button
 										type="button"
 										className="overview-card__main"
@@ -523,7 +628,7 @@ export function ProjectOverview() {
 														: "overview-switch__label"
 												}
 											>
-												{isCurrent ? "Ouvert" : "Fermé"}
+												{isCurrent ? "Actif" : "Inactif"}
 											</span>
 											<input
 												type="checkbox"
@@ -545,7 +650,10 @@ export function ProjectOverview() {
 											/>
 											<span className="overview-switch__track" aria-hidden />
 										</label>
-										<div className="overview-card__menu-wrap">
+										<div
+											className="overview-card__menu-wrap"
+											ref={menuOpenId === record.id ? menuRef : undefined}
+										>
 											<button
 												type="button"
 												className="overview-card__menu-btn"
@@ -559,7 +667,11 @@ export function ProjectOverview() {
 												<MoreVertical size={18} />
 											</button>
 											{menuOpenId === record.id ? (
-												<div className="overview-card__menu" role="menu">
+												<div
+													className="overview-card__menu"
+													role="menu"
+													onMouseDown={(event) => event.stopPropagation()}
+												>
 													<button
 														type="button"
 														role="menuitem"
@@ -568,17 +680,24 @@ export function ProjectOverview() {
 															setMenuOpenId(null);
 														}}
 													>
-														Ouvrir dans l'éditeur
+														Ouvrir
 													</button>
 													<button
 														type="button"
 														role="menuitem"
 														onClick={() => {
-															setAppView("editor");
-															setMenuOpenId(null);
+															void runDuplicateWorkflow(record.id);
 														}}
 													>
-														Aller au canvas
+														Dupliquer
+													</button>
+													<button
+														type="button"
+														role="menuitem"
+														className="is-danger"
+														onClick={() => confirmDeleteWorkflow(record)}
+													>
+														Supprimer
 													</button>
 												</div>
 											) : null}
