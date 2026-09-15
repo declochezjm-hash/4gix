@@ -237,6 +237,55 @@ def _crs_from_payload(payload: Any) -> Optional[str]:
     return None
 
 
+def _fields_from_csv_path(path_str: str) -> List[Dict[str, Any]]:
+    """Lit l'en-tête d'un CSV sur disque (workspace) pour alimenter l'Auto-Architect."""
+    import csv
+    from pathlib import Path
+
+    raw = (path_str or "").strip()
+    if not raw:
+        return []
+    path = Path(raw)
+    if not path.is_file():
+        return []
+    for encoding in ("utf-8-sig", "utf-8", "latin-1", "cp1252"):
+        try:
+            with path.open(newline="", encoding=encoding) as handle:
+                sample = handle.read(4096)
+                handle.seek(0)
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=";,|\t")
+                except csv.Error:
+                    dialect = csv.excel
+                reader = csv.reader(handle, dialect)
+                header = next(reader, None)
+                if not header:
+                    return []
+                return [
+                    {"name": str(name).strip(), "type": "string"}
+                    for name in header
+                    if str(name).strip()
+                ]
+        except (OSError, UnicodeDecodeError, csv.Error):
+            continue
+    return []
+
+
+def _fields_from_node_schema(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    schema = data.get("schema") if isinstance(data.get("schema"), dict) else {}
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    fields: List[Dict[str, Any]] = []
+    for name, prop in properties.items():
+        key = str(name).strip()
+        if not key or key in {"path", "encoding", "delimiter"}:
+            continue
+        prop_type = "string"
+        if isinstance(prop, dict) and prop.get("type"):
+            prop_type = str(prop["type"])
+        fields.append({"name": key, "type": prop_type})
+    return fields
+
+
 def inspect_input_schema(
     node_id: str,
     graph: Optional[Dict[str, Any]] = None,
@@ -328,6 +377,13 @@ def inspect_input_schema(
                 for name, value in first_row.items():
                     fields.append({"name": str(name), "type": _infer_field_type(value)})
 
+    if not fields:
+        fields.extend(_fields_from_node_schema(data))
+
+    if not fields and ntype == "csv_reader":
+        params = data.get("params") if isinstance(data.get("params"), dict) else {}
+        fields.extend(_fields_from_csv_path(str(params.get("path") or "")))
+
     schema = data.get("schema") if isinstance(data.get("schema"), dict) else {}
     crs = _crs_from_payload(geojson) or _crs_from_payload(preview) or data.get("crs")
     geometry = None
@@ -397,6 +453,7 @@ def create_canvas_node_payload(
     node_type: str,
     position: Optional[Dict[str, Any]] = None,
     config: Optional[Dict[str, Any]] = None,
+    graph: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     requested = (node_type or "").strip()
     resolved = resolve_node_type(requested)
@@ -440,7 +497,14 @@ def create_canvas_node_payload(
     elif requested == "attribute_filter":
         label = "Filter by Attribute"
 
+    existing_ids = {
+        str(item.get("id"))
+        for item in graph_nodes(graph)
+        if item.get("id")
+    }
     node_id = _short_id(requested or resolved or "node")
+    while node_id in existing_ids:
+        node_id = _short_id(requested or resolved or "node")
     node = {
         "id": node_id,
         "type": "etl",
@@ -519,7 +583,9 @@ def execute_tool(
         return inspect_input_schema(args.node_id, graph)
     if name == "create_canvas_node":
         args = CreateCanvasNodeArgs.model_validate(arguments)
-        return create_canvas_node_payload(args.node_type, args.position, args.config)
+        return create_canvas_node_payload(
+            args.node_type, args.position, args.config, graph
+        )
     if name == "connect_nodes":
         args = ConnectNodesArgs.model_validate(arguments)
         return connect_nodes(args.from_node_id, args.from_port, args.to_node_id, args.to_port)

@@ -309,6 +309,32 @@ export function resolveArchitectLayoutAnchorId(
 	return layoutAnchorNodeId;
 }
 
+/** Nœuds en aval du reader (filtres / writers), hors cibles à conserver (ex. agent). */
+export function collectArchitectBranchNodeIds(
+	edges: Edge[],
+	sourceId: string,
+	keepTargetIds: ReadonlySet<string>,
+): Set<string> {
+	const remove = new Set<string>();
+	const queue: string[] = [];
+	for (const edge of edges) {
+		if (edge.source === sourceId && !keepTargetIds.has(edge.target)) {
+			queue.push(edge.target);
+		}
+	}
+	while (queue.length > 0) {
+		const id = queue.shift();
+		if (!id || remove.has(id) || keepTargetIds.has(id)) continue;
+		remove.add(id);
+		for (const edge of edges) {
+			if (edge.source === id && !remove.has(edge.target)) {
+				queue.push(edge.target);
+			}
+		}
+	}
+	return remove;
+}
+
 export function architectEdgeExists(
 	edges: Edge[],
 	sourceId: string,
@@ -444,10 +470,26 @@ export function appendMaterializedProposals(
 	proposedNodes: Node<FlowNodeData>[],
 	proposedEdges: Edge[],
 ): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
-	const nextNodes = proposedNodes.map((node) => materializeComposerNode(node));
-	const knownIds = new Set([...nodes, ...nextNodes].map((node) => node.id));
+	const materialized = proposedNodes.map((node) =>
+		materializeComposerNode(node),
+	);
+	const byId = new Map(nodes.map((node) => [node.id, node]));
+	for (const node of materialized) {
+		byId.set(node.id, node);
+	}
+	const mergedNodes = [...byId.values()];
+	const knownIds = new Set(mergedNodes.map((node) => node.id));
+	const seenLinks = new Set(
+		edges.map((edge) => `${edge.source}\0${edge.target}`),
+	);
 	const nextEdges = proposedEdges
 		.filter((edge) => knownIds.has(edge.source) && knownIds.has(edge.target))
+		.filter((edge) => {
+			const key = `${edge.source}\0${edge.target}`;
+			if (seenLinks.has(key)) return false;
+			seenLinks.add(key);
+			return true;
+		})
 		.map((edge) =>
 			materializeComposerEdge(
 				{
@@ -459,7 +501,7 @@ export function appendMaterializedProposals(
 			),
 		);
 	return {
-		nodes: [...nodes, ...nextNodes],
+		nodes: mergedNodes,
 		edges: normalizeCanvasEdges([...edges, ...nextEdges], pathStyle),
 	};
 }

@@ -17,6 +17,7 @@ import {
 	applyArchitectSequentialLayout,
 	ghostEdgeFromArchitectPayload,
 	ghostNodeFromArchitectPayload,
+	collectArchitectBranchNodeIds,
 	graphForStepArchitectRequest,
 	materializeComposerEdge,
 	resolveArchitectLayoutAnchorId,
@@ -340,6 +341,7 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			let previousSteps = options.initialPreviousSteps ?? [];
 			let stepIndex = options.initialStepIndex ?? 0;
 			let total = 8;
+			let planLength = 0;
 			let firstResult: StepArchitectResult | null = null;
 
 			while (stepIndex < total) {
@@ -360,6 +362,15 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 				});
 
 				if (!firstResult) firstResult = result;
+				if (result.total_steps != null && result.total_steps > 0) {
+					total = result.total_steps;
+				} else if (result.global_plan?.length) {
+					total = result.global_plan.length;
+				}
+				if (result.global_plan?.length) {
+					planLength = result.global_plan.length;
+					total = Math.max(total, planLength);
+				}
 				setArchitectSession({
 					globalPlan: result.global_plan || [],
 					stepIndex: result.current_step_index ?? stepIndex,
@@ -405,7 +416,29 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 					},
 				);
 				ghostNodesAcc.push(laid.node);
-				if (laid.edge) ghostEdgesAcc.push(laid.edge);
+				const proposedEdgeRaw = result.proposed_edge;
+				if (
+					proposedEdgeRaw &&
+					typeof proposedEdgeRaw === "object" &&
+					(proposedEdgeRaw as { source?: string }).source &&
+					(proposedEdgeRaw as { target?: string }).target
+				) {
+					const apiEdge = ghostEdgeFromArchitectPayload(
+						proposedEdgeRaw as Record<string, unknown>,
+					);
+					apiEdge.target = laid.node.id;
+					if (
+						!ghostEdgesAcc.some(
+							(edge) =>
+								edge.source === apiEdge.source &&
+								edge.target === apiEdge.target,
+						)
+					) {
+						ghostEdgesAcc.push(apiEdge);
+					}
+				} else if (laid.edge) {
+					ghostEdgesAcc.push(laid.edge);
+				}
 				if (!attachToSource) {
 					lastNodeId = laid.node.id;
 				}
@@ -432,7 +465,8 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 					totalSteps: total,
 				});
 
-				if (result.is_complete || stepIndex >= total) break;
+				const expectedSteps = planLength || total;
+				if (stepIndex >= expectedSteps) break;
 				if (!options.continueUntilComplete) break;
 			}
 
@@ -489,41 +523,46 @@ export function AutoArchitectInspector({ nodeId }: { nodeId: string }) {
 			}
 
 			try {
-				let layoutStartNodeId = nodeId;
-				let stepIndex = architectStepIndex;
-				let previousSteps = [...architectPreviousSteps];
-
-				if (useDagStore.getState().stepProposalNodes.length) {
-					const ghostNodes = useDagStore.getState().stepProposalNodes;
-					const ghostEdges = useDagStore.getState().stepProposalEdges;
-					appendStepProposals(ghostNodes, ghostEdges);
-					discardStoreProposals();
-					rejectAll();
-					const materializedId = ghostNodes[ghostNodes.length - 1]?.id;
-					if (materializedId) {
-						layoutStartNodeId = materializedId;
-						previousSteps = [
-							...previousSteps,
-							{
-								index: stepIndex,
-								node_id: materializedId,
-								step_summary: globalPlan[stepIndex] || `Étape ${stepIndex + 1}`,
-							},
-						];
-						stepIndex += 1;
-						setArchitectSession({
-							previousSteps,
-							stepIndex,
-						});
+				const dag = useDagStore.getState();
+				const staleNodeIds = new Set<string>();
+				for (const step of dag.architectPreviousSteps) {
+					if (typeof step.node_id === "string" && step.node_id.trim()) {
+						staleNodeIds.add(step.node_id.trim());
 					}
 				}
+				for (const proposal of dag.stepProposalNodes) {
+					staleNodeIds.add(proposal.id);
+				}
+				const branchIds = collectArchitectBranchNodeIds(
+					dag.edges,
+					sourceId,
+					new Set([nodeId]),
+				);
+				for (const id of branchIds) staleNodeIds.add(id);
+				if (staleNodeIds.size > 0) {
+					useDagStore.setState({
+						nodes: dag.nodes.filter((item) => !staleNodeIds.has(item.id)),
+						edges: dag.edges.filter(
+							(edge) =>
+								!staleNodeIds.has(edge.source) &&
+								!staleNodeIds.has(edge.target),
+						),
+					});
+				}
+
+				discardStoreProposals();
+				rejectAll();
+				setArchitectSession({
+					stepIndex: 0,
+					previousSteps: [],
+				});
 
 				await runArchitectPipeline(objective, sourceId, {
 					continueUntilComplete: true,
 					materialize: true,
-					initialPreviousSteps: previousSteps,
-					initialStepIndex: stepIndex,
-					layoutStartNodeId,
+					initialPreviousSteps: [],
+					initialStepIndex: 0,
+					layoutStartNodeId: nodeId,
 				});
 
 				discardStoreProposals();

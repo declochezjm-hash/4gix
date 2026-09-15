@@ -12,6 +12,7 @@ import pandas as pd
 from shapely.geometry import Point
 
 from app.agent.composer import parse_parallel_branch_objectives
+from app.agent.tools import inspect_input_schema
 from app.agent.step_architect import (
     ARCHITECT_BRANCH_OFFSET_Y,
     build_step_plan,
@@ -206,12 +207,62 @@ class Test4GIxPipeline(unittest.TestCase):
             },
         )
         node_types = [step.node_type for step in steps]
-        self.assertIn("vertex_creator", node_types)
-        self.assertIn("shapefile_writer", node_types)
-        self.assertLess(
-            node_types.index("vertex_creator"),
-            node_types.index("shapefile_writer"),
+        self.assertEqual(node_types, ["shapefile_writer"])
+        self.assertNotIn("vertex_creator", node_types)
+
+    def test_06b_step_plan_user_led_shp_prompt_without_snapshot(self) -> None:
+        """Sans exécution du CSV : en-tête fichier → filtres + SHP (pas repli CSV)."""
+        import tempfile
+
+        prompt = (
+            "fait moi un filtre sur le type de source LED et fait moi un shp "
+            "et un autre filtre sur le type de source Lampe LED et fait moi un shp"
         )
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            encoding="utf-8",
+            newline="",
+        ) as handle:
+            handle.write("TYPE_SOURCE;X;Y\nLED;1;2\n")
+            csv_path = handle.name
+        try:
+            inspect = inspect_input_schema(
+                "csv_reader-1",
+                {
+                    "nodes": [
+                        {
+                            "id": "csv_reader-1",
+                            "type": "etl",
+                            "data": {
+                                "nodeType": "csv_reader",
+                                "params": {"path": csv_path},
+                            },
+                        }
+                    ],
+                    "edges": [],
+                },
+            )
+            self.assertIn("TYPE_SOURCE", [f["name"] for f in inspect.get("fields", [])])
+            steps, notices = build_step_plan(prompt, inspect)
+            types = [s.node_type for s in steps]
+            self.assertIn("attribute_filter", types)
+            self.assertIn("shapefile_writer", types)
+            self.assertNotIn("csv_writer", types)
+            self.assertEqual(len(steps), 4)
+            self.assertEqual(
+                types,
+                [
+                    "attribute_filter",
+                    "shapefile_writer",
+                    "attribute_filter",
+                    "shapefile_writer",
+                ],
+            )
+            self.assertNotIn("vertex_creator", types)
+        finally:
+            os.unlink(csv_path)
 
     def test_06_step_architect_parallel_dag(self) -> None:
         # Formulation alignée sur parse_parallel_branch_objectives (séparateur « et un autre filtre »).

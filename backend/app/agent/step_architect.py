@@ -23,6 +23,7 @@ from app.agent.composer import (
 )
 from app.agent.geometry_healing import (
     build_proactive_suggestions,
+    coordinate_pair,
     enrich_inspect_geometry_flags,
     geometry_heal_node_type,
     geometry_heal_step_config,
@@ -156,7 +157,12 @@ def _expand_geometry_heal_steps(
         notices.extend(msgs)
         heal_cfg = geometry_heal_step_config(enriched)
         heal_type = geometry_heal_node_type(enriched) or "vertex_creator"
-        if heal_cfg and is_spatial_writer(resolved_type):
+        # file_writer reconstruit la géométrie depuis X/Y à l'exécution — pas de nœud dédié.
+        if (
+            heal_cfg
+            and is_spatial_writer(resolved_type)
+            and coordinate_pair(enriched) is None
+        ):
             expanded.append(
                 StepDefinition(
                     kind="geometry_heal",
